@@ -1,0 +1,341 @@
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { Plus, Upload, CheckCircle2 } from 'lucide-react';
+
+const Admin = () => {
+    // Tab de navegação no painel (Criar Turma vs Postar Material)
+    const [activeTab, setActiveTab] = useState('class');
+
+    // States: Criar Turma
+    const [classTitle, setClassTitle] = useState('');
+    const [classDesc, setClassDesc] = useState('');
+    const [classCategory, setClassCategory] = useState('');
+    const [classImage, setClassImage] = useState('');
+    const [classLoading, setClassLoading] = useState(false);
+
+    // States: Postar Material
+    const [myClasses, setMyClasses] = useState([]);
+    const [selectedClass, setSelectedClass] = useState('');
+    const [matTitle, setMatTitle] = useState('');
+    const [matDesc, setMatDesc] = useState('');
+    const [matFile, setMatFile] = useState(null);
+    const [matType, setMatType] = useState('pdf');
+    const [matLoading, setMatLoading] = useState(false);
+
+    // Mensagens de Sucesso
+    const [successMessage, setSuccessMessage] = useState('');
+
+    useEffect(() => {
+        // Busca as turmas que o admin criou ou todas as turmas
+        const fetchClasses = async () => {
+            const { data, error } = await supabase
+                .from('classes')
+                .select('id, title')
+                .order('title');
+
+            if (!error && data) {
+                setMyClasses(data);
+                if (data.length > 0) setSelectedClass(data[0].id);
+            }
+        };
+        fetchClasses();
+    }, [activeTab]);
+
+    const showSuccess = (msg) => {
+        setSuccessMessage(msg);
+        setTimeout(() => setSuccessMessage(''), 3000);
+    };
+
+    const handleCreateClass = async (e) => {
+        e.preventDefault();
+        setClassLoading(true);
+
+        try {
+            const { data: userData } = await supabase.auth.getUser();
+            const { error } = await supabase.from('classes').insert([
+                {
+                    title: classTitle,
+                    description: classDesc,
+                    category: classCategory,
+                    thumbnail_url: classImage,
+                    created_by: userData.user.id
+                }
+            ]);
+
+            if (error) throw error;
+
+            showSuccess('Turma criada com sucesso!');
+            setClassTitle('');
+            setClassDesc('');
+            setClassCategory('');
+            setClassImage('');
+
+        } catch (error) {
+            console.error("Erro ao criar turma:", error.message);
+            alert("Erro ao criar turma: " + error.message);
+        } finally {
+            setClassLoading(false);
+        }
+    };
+
+    const handlePostMaterial = async (e) => {
+        e.preventDefault();
+        setMatLoading(true);
+
+        try {
+            const { data: userData } = await supabase.auth.getUser();
+            let driveLink = null;
+
+            // Se houver arquivo, envia para a Edge Function
+            if (matFile) {
+                const formData = new FormData();
+                formData.append('file', matFile);
+                formData.append('title', matTitle);
+
+                const { data: functionData, error: functionError } = await supabase.functions.invoke('drive-upload', {
+                    body: formData,
+                });
+
+                if (functionError) {
+                    console.error("Erro na Edge Function:", functionError);
+                    throw new Error("Falha ao fazer upload do arquivo para o Google Drive.");
+                }
+
+                if (functionData?.error) {
+                     throw new Error(functionData.error);
+                }
+
+                driveLink = functionData.driveLink;
+            }
+
+            // Salva a atividade no banco
+            const { error: dbError } = await supabase.from('class_activities').insert([
+                {
+                    class_id: selectedClass,
+                    title: matTitle,
+                    description: matDesc,
+                    file_type: matType,
+                    drive_link: driveLink,
+                    created_by: userData.user.id
+                }
+            ]);
+
+            if (dbError) throw dbError;
+
+            showSuccess('Material postado com sucesso no Mural!');
+            setMatTitle('');
+            setMatDesc('');
+            setMatFile(null);
+
+            // Opcional: Redirecionar para a turma
+            // navigate(`/class/${selectedClass}`);
+
+        } catch (error) {
+            console.error("Erro ao postar material:", error.message);
+            alert("Erro ao postar material: " + error.message);
+        } finally {
+            setMatLoading(false);
+        }
+    };
+
+    return (
+        <div className="max-w-3xl mx-auto py-8">
+            <h1 className="text-3xl font-bold text-gray-900 mb-8">Painel do Professor</h1>
+
+            {successMessage && (
+                <div className="mb-6 bg-green-50 text-green-700 p-4 rounded-md flex items-center border border-green-200">
+                    <CheckCircle2 className="w-5 h-5 mr-2" />
+                    {successMessage}
+                </div>
+            )}
+
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200 mb-8">
+                <button
+                    className={`pb-4 px-4 text-sm font-medium transition-colors relative ${
+                        activeTab === 'class' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('class')}
+                >
+                    Criar Nova Turma
+                    {activeTab === 'class' && (
+                        <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md"></span>
+                    )}
+                </button>
+                <button
+                    className={`pb-4 px-4 text-sm font-medium transition-colors relative ${
+                        activeTab === 'material' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('material')}
+                >
+                    Postar Material
+                    {activeTab === 'material' && (
+                        <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md"></span>
+                    )}
+                </button>
+            </div>
+
+            {/* Form: Criar Turma */}
+            {activeTab === 'class' && (
+                <div className="bg-white p-6 sm:p-8 rounded-lg border border-gray-200 shadow-sm">
+                    <form onSubmit={handleCreateClass} className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Título da Turma *</label>
+                            <input
+                                type="text"
+                                required
+                                value={classTitle}
+                                onChange={(e) => setClassTitle(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Ex: Matemática Avançada"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                            <textarea
+                                rows="3"
+                                value={classDesc}
+                                onChange={(e) => setClassDesc(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Uma breve descrição sobre a turma..."
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                                <input
+                                    type="text"
+                                    value={classCategory}
+                                    onChange={(e) => setClassCategory(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: Exatas"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">URL da Imagem de Capa</label>
+                                <input
+                                    type="url"
+                                    value={classImage}
+                                    onChange={(e) => setClassImage(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="https://exemplo.com/imagem.jpg"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="pt-4">
+                            <button
+                                type="submit"
+                                disabled={classLoading}
+                                className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center"
+                            >
+                                {classLoading ? 'Criando...' : (
+                                    <>
+                                        <Plus className="w-5 h-5 mr-2" />
+                                        Criar Turma
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Form: Postar Material */}
+            {activeTab === 'material' && (
+                <div className="bg-white p-6 sm:p-8 rounded-lg border border-gray-200 shadow-sm">
+                    {myClasses.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">
+                            Você precisa criar uma turma antes de postar materiais.
+                        </div>
+                    ) : (
+                        <form onSubmit={handlePostMaterial} className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Selecione a Turma *</label>
+                                <select
+                                    required
+                                    value={selectedClass}
+                                    onChange={(e) => setSelectedClass(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                >
+                                    {myClasses.map(c => (
+                                        <option key={c.id} value={c.id}>{c.title}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Título da Atividade/Material *</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={matTitle}
+                                    onChange={(e) => setMatTitle(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Ex: Aula 01 - Introdução"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição / Instruções</label>
+                                <textarea
+                                    rows="3"
+                                    value={matDesc}
+                                    onChange={(e) => setMatDesc(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                    placeholder="Mensagem para o mural..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Arquivo</label>
+                                    <select
+                                        value={matType}
+                                        onChange={(e) => setMatType(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                    >
+                                        <option value="pdf">PDF</option>
+                                        <option value="video">Vídeo</option>
+                                        <option value="doc">Documento de Texto</option>
+                                        <option value="xls">Planilha</option>
+                                        <option value="pptx">Apresentação</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Arquivo (Opcional)</label>
+                                    <input
+                                        type="file"
+                                        onChange={(e) => setMatFile(e.target.files[0])}
+                                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                    />
+                                    <p className="mt-1 text-xs text-gray-500">
+                                        Será enviado ao Google Drive via Supabase Edge Functions.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="pt-4">
+                                <button
+                                    type="submit"
+                                    disabled={matLoading}
+                                    className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center"
+                                >
+                                    {matLoading ? 'Enviando...' : (
+                                        <>
+                                            <Upload className="w-5 h-5 mr-2" />
+                                            Postar no Mural
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default Admin;
