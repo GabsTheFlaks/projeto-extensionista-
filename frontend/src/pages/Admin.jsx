@@ -92,10 +92,12 @@ const handlePostMaterial = async (e) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData?.session?.access_token;
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
     const response = await fetch(`${supabaseUrl}/functions/v1/drive-upload`, {
         method: 'POST',
         headers: {
+            'Authorization': `Bearer ${anonKey}`,
             'X-User-Token': `Bearer ${token}`,
             'Content-Type': 'application/json'
         },
