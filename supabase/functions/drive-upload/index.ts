@@ -1,15 +1,45 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { SignJWT, importPKCS8 } from "https://deno.land/x/jose@v4.14.4/index.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-user-token',
 };
 
-// Edge Function para receber um arquivo via FormData, autenticar no Google usando uma Service Account
-// (fornecida pelas env vars do Supabase: GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_DRIVE_FOLDER_ID)
-// e enviar para o Google Drive.
+// ─── Autenticação real via Supabase + verificação de role admin ───
+async function requireAdmin(req: Request): Promise<void> {
+  const authHeader = req.headers.get("X-User-Token");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw Object.assign(new Error("Token de autorização ausente ou inválido."), { status: 401 });
+  }
 
-async function getGoogleAccessToken() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false }
+  });
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    throw Object.assign(new Error("Acesso não autorizado: token inválido ou expirado."), { status: 401 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin") {
+    throw Object.assign(new Error("Proibido: você não tem permissão para enviar arquivos."), { status: 403 });
+  }
+}
+
+// ─── Geração do Access Token do Google via Service Account ───
+async function getGoogleAccessToken(): Promise<string> {
   const email = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL");
   const privateKeyRaw = Deno.env.get("GOOGLE_PRIVATE_KEY");
 
@@ -17,15 +47,7 @@ async function getGoogleAccessToken() {
     throw new Error("Credenciais do Google não configuradas nas variáveis de ambiente.");
   }
 
-  // Tratamento da private key (substituindo \n literais por quebras de linha reais)
   const privateKey = privateKeyRaw.replace(/\\n/g, '\n');
-
-  // Gerar um JWT temporário para autenticar a service account
-  // Nota: Para manter este script leve no Deno/Edge, montaremos o JWT manualmente ou via bibliotecas esm.sh
-  // Usando a lib jsonwebtoken via esm.sh ou oauth2
-  const { SignJWT } = await import("https://deno.land/x/jose@v4.14.4/index.ts");
-  const { importPKCS8 } = await import("https://deno.land/x/jose@v4.14.4/index.ts");
-
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + 3600;
 
@@ -57,67 +79,74 @@ async function getGoogleAccessToken() {
   return tokenData.access_token;
 }
 
+// ─── Handler principal ───
+// Responsabilidade única: autenticar e devolver a URL de upload ao frontend.
+// O arquivo NÃO passa por esta função — vai direto do browser para o Google Drive.
 serve(async (req) => {
-  // CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('file');
-    const title = formData.get('title') || 'Arquivo Sem Nome';
+    // 1. Valida JWT + role admin
+    await requireAdmin(req);
 
-    if (!file || !(file instanceof File)) {
-      return new Response(JSON.stringify({ error: "Nenhum arquivo enviado." }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+    // 2. Lê os metadados do arquivo (nome, tipo, tamanho) — sem o arquivo em si
+    const { title, mimeType, size } = await req.json();
+
+    if (!title || !mimeType || !size) {
+      throw Object.assign(
+        new Error("Parâmetros obrigatórios ausentes: title, mimeType, size."),
+        { status: 400 }
+      );
     }
 
     const folderId = Deno.env.get("GOOGLE_DRIVE_FOLDER_ID");
-
     const accessToken = await getGoogleAccessToken();
 
-    // Preparar o request de upload Multipart para a API do Google Drive v3
-    const metadata = {
+    // 3. Abre a sessão de upload resumável no Google Drive
+    const metadata: Record<string, unknown> = {
       name: title,
-      parents: folderId ? [folderId] : []
+      parents: folderId ? [folderId] : [],
     };
 
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', file);
+    const initResponse = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "X-Upload-Content-Type": mimeType || "application/octet-stream",
+          "X-Upload-Content-Length": String(size),
+        },
+        body: JSON.stringify(metadata),
+      }
+    );
 
-    const uploadResponse = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      body: form,
-    });
-
-    const uploadData = await uploadResponse.json();
-
-    if (!uploadResponse.ok) {
-      console.error("Erro de upload no Drive:", uploadData);
-      throw new Error("Falha ao fazer upload para o Google Drive.");
+    if (!initResponse.ok) {
+      const err = await initResponse.text();
+      console.error("Erro ao iniciar sessão no Google Drive:", err);
+      throw new Error("Falha ao iniciar sessão de upload no Google Drive.");
     }
 
+    const uploadUrl = initResponse.headers.get("Location");
+    if (!uploadUrl) {
+      throw new Error("URL de upload não retornada pelo Google.");
+    }
+
+    // 4. Devolve só a URL — o frontend fará o upload direto
     return new Response(
-      JSON.stringify({
-        message: "Upload com sucesso",
-        fileId: uploadData.id,
-        driveLink: uploadData.webViewLink
-      }),
+      JSON.stringify({ uploadUrl }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Erro na Edge Function:", error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const status = (error as any).status ?? 500;
+    console.error(`Erro na Edge Function [${status}]:`, error.message);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
