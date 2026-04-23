@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import ClassView from './pages/ClassView';
+import Viewer from './pages/Viewer';
 import Admin from './pages/Admin';
 
 const AdminRoute = () => {
@@ -39,6 +40,7 @@ const AppRoutes = () => {
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/catalog" element={<Dashboard />} /> {/* Reaproveita o Dashboard */}
                         <Route path="/class/:id" element={<ClassView />} />
+                        <Route path="/activity/:activityId" element={<Viewer />} />
 
                         {/* Rotas de Admin */}
                         <Route element={<AdminRoute />}>
