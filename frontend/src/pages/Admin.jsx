@@ -92,12 +92,18 @@ const Admin = () => {
                 formData.append('file', matFile);
                 formData.append('title', matTitle);
 
+                // Força o envio do JWT do usuário atual para passar pela barreira do Supabase Edge Runtime
+                const { data: { session } } = await supabase.auth.getSession();
+
                 const { data: functionData, error: functionError } = await supabase.functions.invoke('drive-upload', {
                     body: formData,
+                    headers: {
+                        Authorization: `Bearer ${session?.access_token}`
+                    }
                 });
 
                 if (functionError) {
-                    console.error("Erro na Edge Function:", functionError);
+                    console.error("Erro na Edge Function (Supabase Client):", functionError);
                     throw new Error("Falha ao fazer upload do arquivo para o Google Drive.");
                 }
 

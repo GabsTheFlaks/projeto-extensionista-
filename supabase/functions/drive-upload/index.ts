@@ -64,6 +64,51 @@ serve(async (req) => {
   }
 
   try {
+    // PROTEÇÃO DE SEGURANÇA: Validar o JWT enviado pelo Frontend
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // Criar um cliente Supabase "dummy" local apenas para invocar getUser e bater na API do Auth
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') || '';
+
+    // Import do Supabase usando a url esm do arquivo import_map não funciona diretamente se não
+    // declarado no arquivo. Faremos via import dinamico seguro:
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.38.4");
+
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+        return new Response(JSON.stringify({ error: "Unauthorized access: invalid token" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+    }
+
+    // Opcional/Recomendado: Verificar se o usuário possui a role de 'admin' na tabela profiles
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    if (profile?.role !== 'admin') {
+         return new Response(JSON.stringify({ error: "Forbidden: You do not have permission to upload files." }), {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+    }
+
+
     const formData = await req.formData();
     const file = formData.get('file');
     const title = formData.get('title') || 'Arquivo Sem Nome';
