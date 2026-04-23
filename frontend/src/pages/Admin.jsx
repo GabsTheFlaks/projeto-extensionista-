@@ -78,65 +78,96 @@ const Admin = () => {
         }
     };
 
-    const handlePostMaterial = async (e) => {
-        e.preventDefault();
-        setMatLoading(true);
+const handlePostMaterial = async (e) => {
+  e.preventDefault();
+  if (!matFile) return alert("Selecione um arquivo!");
 
-        try {
-            const { data: userData } = await supabase.auth.getUser();
-            let driveLink = null;
+  try {
+    setMatLoading(true);
+    console.log("1. Solicitando link de upload para o Supabase...");
 
-            // Se houver arquivo, envia para a Edge Function
-            if (matFile) {
-                const formData = new FormData();
-                formData.append('file', matFile);
-                formData.append('title', matTitle);
+    // Passo 1: Pede a URL de upload à Edge Function (só metadados, sem o arquivo)
+    // O JWT do usuário é enviado automaticamente pelo supabase.functions.invoke
 
-                const { data: functionData, error: functionError } = await supabase.functions.invoke('drive-upload', {
-                    body: formData,
-                });
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
 
-                if (functionError) {
-                    console.error("Erro na Edge Function:", functionError);
-                    throw new Error("Falha ao fazer upload do arquivo para o Google Drive.");
-                }
+    const response = await fetch(`${supabaseUrl}/functions/v1/drive-upload`, {
+        method: 'POST',
+        headers: {
+            'X-User-Token': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            title: matFile.name,
+            mimeType: matFile.type || "application/octet-stream",
+            size: matFile.size,
+        })
+    });
 
-                if (functionData?.error) {
-                     throw new Error(functionData.error);
-                }
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        data = { error: "Erro ao ler a resposta do servidor." };
+    }
 
-                driveLink = functionData.driveLink;
-            }
+    if (!response.ok) throw new Error(`Erro na autorização: ${data.error || response.statusText}`);
+    if (!data?.uploadUrl) throw new Error("A URL de upload não foi gerada.");
 
-            // Salva a atividade no banco
-            const { error: dbError } = await supabase.from('class_activities').insert([
-                {
-                    class_id: selectedClass,
-                    title: matTitle,
-                    description: matDesc,
-                    file_type: matType,
-                    drive_link: driveLink,
-                    created_by: userData.user.id
-                }
-            ]);
+    console.log("2. Link recebido! Enviando arquivo direto para o Google...");
 
-            if (dbError) throw dbError;
+    // Passo 2: Envia o arquivo DIRETAMENTE para o Google Drive (não passa pela Edge Function)
+    const uploadRes = await fetch(data.uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": matFile.type || "application/octet-stream",
+        "Content-Length": String(matFile.size),
+      },
+      body: matFile,
+    });
 
-            showSuccess('Material postado com sucesso no Mural!');
-            setMatTitle('');
-            setMatDesc('');
-            setMatFile(null);
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      console.error("Resposta do Google Drive:", err);
+      throw new Error("O Google Drive recusou o arquivo durante o envio.");
+    }
 
-            // Opcional: Redirecionar para a turma
-            // navigate(`/class/${selectedClass}`);
+    // Captura o fileId e o link gerados pelo Google Drive
+    const uploadData = await uploadRes.json();
+    const fileId = uploadData.id;
+    const driveLink = uploadData.webViewLink;
 
-        } catch (error) {
-            console.error("Erro ao postar material:", error.message);
-            alert("Erro ao postar material: " + error.message);
-        } finally {
-            setMatLoading(false);
+    console.log("3. Upload concluído!", { fileId, driveLink });
+
+    // ─── Continue aqui salvando no Supabase se necessário ───
+    const { data: userData } = await supabase.auth.getUser();
+    const { error: dbError } = await supabase.from('class_activities').insert([
+        {
+            class_id: selectedClass,
+            title: matTitle,
+            description: matDesc,
+            file_type: matType,
+            drive_link: driveLink,
+            created_by: userData.user.id
         }
-    };
+    ]);
+
+    if (dbError) throw dbError;
+
+    showSuccess("Material enviado com sucesso para o Drive!");
+    setMatTitle('');
+    setMatDesc('');
+    setMatFile(null);
+
+  } catch (err) {
+    console.error("Erro ao postar material:", err);
+    alert(`Erro ao postar material: ${err.message}`);
+  } finally {
+    setMatLoading(false);
+  }
+};
 
     return (
         <div className="max-w-3xl mx-auto py-8">
