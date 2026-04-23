@@ -22,9 +22,11 @@ async function requireAdmin(req: Request): Promise<void> {
     auth: { persistSession: false }
   });
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const token = authHeader.replace("Bearer ", "").trim();
+  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
   if (userError || !user) {
-    throw Object.assign(new Error("Acesso não autorizado: token inválido ou expirado."), { status: 401 });
+    console.error("Erro no getUser:", userError);
+    throw Object.assign(new Error(`Acesso não autorizado: token inválido ou expirado. Detalhe: ${userError?.message || 'Sem usuário'}`), { status: 401 });
   }
 
   const { data: profile } = await supabase
