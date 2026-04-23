@@ -11,6 +11,20 @@ import ClassView from './pages/ClassView';
 import Viewer from './pages/Viewer';
 import Admin from './pages/Admin';
 
+const ConfigWarning = () => {
+    const isDefaultConfig = import.meta.env.VITE_SUPABASE_URL === undefined || import.meta.env.VITE_SUPABASE_URL.includes('localhost');
+
+    if (!isDefaultConfig) return null;
+
+    return (
+        <div className="bg-red-600 text-white px-4 py-3 text-center sm:px-6 lg:px-8 z-50 fixed top-0 w-full shadow-md text-sm font-medium">
+            <p>
+                ⚠️ <strong>Aviso Importante:</strong> O Supabase não está configurado. Crie o arquivo <code className="bg-red-800 px-1 py-0.5 rounded">.env</code> e insira sua <code className="bg-red-800 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code> e <code className="bg-red-800 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code>.
+            </p>
+        </div>
+    );
+};
+
 const AdminRoute = () => {
     const { user, loading } = useAuth();
     const navigate = useNavigate();
@@ -58,9 +72,14 @@ const AppRoutes = () => {
 
 function App() {
     return (
-        <AuthProvider>
-            <AppRoutes />
-        </AuthProvider>
+        <>
+            <ConfigWarning />
+            <AuthProvider>
+                <div className={import.meta.env.VITE_SUPABASE_URL === undefined || import.meta.env.VITE_SUPABASE_URL.includes('localhost') ? 'pt-12' : ''}>
+                    <AppRoutes />
+                </div>
+            </AuthProvider>
+        </>
     );
 }
 
