@@ -171,26 +171,23 @@ const ClassView = () => {
                                         </p>
                                     )}
 
-                                    {/* Link do Drive (Viewer/Download) */}
+                                    {/* Link do Drive (Redirecionamento para a página Viewer) */}
                                     {activity.drive_link && (
-                                        <div className="mt-6 border border-gray-200 rounded-md overflow-hidden max-w-sm flex">
-                                            <div className="bg-gray-50 border-r border-gray-200 p-4 flex items-center justify-center w-20">
+                                        <div
+                                            onClick={() => navigate(`/activity/${activity.id}`)}
+                                            className="mt-6 border border-gray-200 rounded-md overflow-hidden max-w-sm flex cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
+                                        >
+                                            <div className="bg-gray-50 border-r border-gray-200 p-4 flex items-center justify-center w-20 group-hover:bg-blue-50 transition-colors">
                                                 {getFileIcon(activity.file_type)}
                                             </div>
-                                            <div className="p-4 flex flex-col justify-center flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 truncate">
+                                            <div className="p-4 flex flex-col justify-center flex-1 min-w-0 bg-white">
+                                                <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                                                     {activity.title}
                                                 </p>
                                                 <p className="text-xs text-gray-500 uppercase mt-1">
                                                     {activity.file_type || 'ARQUIVO'}
                                                 </p>
                                             </div>
-                                            <button
-                                                onClick={() => window.open(activity.drive_link, '_blank')}
-                                                className="bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium text-sm px-4 flex items-center justify-center transition-colors border-l border-gray-200"
-                                            >
-                                                Abrir
-                                            </button>
                                         </div>
                                     )}
                                 </div>
