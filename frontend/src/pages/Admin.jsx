@@ -18,9 +18,10 @@ const Admin = () => {
     const [selectedClass, setSelectedClass] = useState('');
     const [matTitle, setMatTitle] = useState('');
     const [matDesc, setMatDesc] = useState('');
-    const [matFile, setMatFile] = useState(null);
-    const [matType, setMatType] = useState('pdf');
+    const [matLink, setMatLink] = useState(''); // Novo campo de link
+    const [matType, setMatType] = useState('pdf'); // Mantido por compatibilidade
     const [matLoading, setMatLoading] = useState(false);
+    const [linkError, setLinkError] = useState(''); // Erro de validação de link
 
     // Mensagens de Sucesso
     const [successMessage, setSuccessMessage] = useState('');
@@ -78,41 +79,39 @@ const Admin = () => {
         }
     };
 
+    const validateLink = (url) => {
+        if (!url) return null; // Link é opcional no schema, mas se tiver, valida.
+
+        const lowerUrl = url.toLowerCase();
+
+        if (lowerUrl.includes('drive.google.com')) return 'drive';
+        if (lowerUrl.includes('youtube.com/watch') || lowerUrl.includes('youtu.be/') || lowerUrl.includes('youtube.com/shorts/')) return 'video';
+        if (lowerUrl.includes('onedrive.live.com') || lowerUrl.includes('sharepoint.com') || lowerUrl.includes('canva.com')) return 'office';
+
+        return 'invalid';
+    };
+
     const handlePostMaterial = async (e) => {
         e.preventDefault();
+        setLinkError('');
         setMatLoading(true);
 
         try {
-            const { data: userData } = await supabase.auth.getUser();
-            let driveLink = null;
+            // Valida o link antes de enviar
+            let finalFileType = matType; // fallback
+            let finalLink = matLink.trim() !== '' ? matLink : null;
 
-            // Se houver arquivo, envia para a Edge Function
-            if (matFile) {
-                const formData = new FormData();
-                formData.append('file', matFile);
-                formData.append('title', matTitle);
-
-                // Força o envio do JWT do usuário atual para passar pela barreira do Supabase Edge Runtime
-                const { data: { session } } = await supabase.auth.getSession();
-
-                const { data: functionData, error: functionError } = await supabase.functions.invoke('drive-upload', {
-                    body: formData,
-                    headers: {
-                        Authorization: `Bearer ${session?.access_token}`
-                    }
-                });
-
-                if (functionError) {
-                    console.error("Erro na Edge Function (Supabase Client):", functionError);
-                    throw new Error("Falha ao fazer upload do arquivo para o Google Drive.");
+            if (finalLink) {
+                const detectedType = validateLink(finalLink);
+                if (detectedType === 'invalid') {
+                    setLinkError("Link inválido. Use links do Google Drive, YouTube, Microsoft Office 365 ou Canva.");
+                    setMatLoading(false);
+                    return;
                 }
-
-                if (functionData?.error) {
-                     throw new Error(functionData.error);
-                }
-
-                driveLink = functionData.driveLink;
+                finalFileType = detectedType; // "drive", "video" ou "office"
             }
+
+            const { data: userData } = await supabase.auth.getUser();
 
             // Salva a atividade no banco
             const { error: dbError } = await supabase.from('class_activities').insert([
@@ -120,8 +119,8 @@ const Admin = () => {
                     class_id: selectedClass,
                     title: matTitle,
                     description: matDesc,
-                    file_type: matType,
-                    drive_link: driveLink,
+                    file_type: finalFileType,
+                    drive_link: finalLink, // reaproveitamos a coluna drive_link para salvar qualquer url
                     created_by: userData.user.id
                 }
             ]);
@@ -131,10 +130,7 @@ const Admin = () => {
             showSuccess('Material postado com sucesso no Mural!');
             setMatTitle('');
             setMatDesc('');
-            setMatFile(null);
-
-            // Opcional: Redirecionar para a turma
-            // navigate(`/class/${selectedClass}`);
+            setMatLink('');
 
         } catch (error) {
             console.error("Erro ao postar material:", error.message);
@@ -310,15 +306,23 @@ const Admin = () => {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Arquivo (Opcional)</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Link do Material</label>
                                     <input
-                                        type="file"
-                                        onChange={(e) => setMatFile(e.target.files[0])}
-                                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                                        type="url"
+                                        value={matLink}
+                                        onChange={(e) => setMatLink(e.target.value)}
+                                        className={`w-full px-4 py-2 border ${linkError ? 'border-red-500' : 'border-gray-300'} rounded-md focus:ring-blue-500 focus:border-blue-500`}
+                                        placeholder="https://..."
                                     />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Será enviado ao Google Drive via Supabase Edge Functions.
-                                    </p>
+                                    {linkError ? (
+                                        <p className="mt-1 text-xs text-red-600 font-medium">
+                                            {linkError}
+                                        </p>
+                                    ) : (
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Cole um link do Google Drive, YouTube, Microsoft Office 365 ou Canva. Links de outros serviços não são aceitos.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
