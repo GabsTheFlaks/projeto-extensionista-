@@ -1,24 +1,44 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { supabase } from '../lib/supabase';
+import { useLocation } from 'react-router-dom';
 import CourseCard from '../components/CourseCard';
 import { BookX } from 'lucide-react';
 
 const Dashboard = () => {
     const { user } = useAuth();
+    const location = useLocation();
+
     const [myClasses, setMyClasses] = useState([]);
     const [allClasses, setAllClasses] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState('my_courses'); // 'my_courses' | 'catalog'
+    const [localTab, setLocalTab] = useState(null); // 'my_courses' | 'catalog' ou null se seguir url
+
+    // Controle do Modal de Matrícula
+    const [enrollModal, setEnrollModal] = useState({ isOpen: false, course: null });
+    const [enrolling, setEnrolling] = useState(false);
+
+    const baseTab = location.pathname === '/catalog' ? 'catalog' : 'my_courses';
+    const activeTab = localTab !== null ? localTab : baseTab;
+
+    // Sincronizar o Local Tab para anular ao usar navegação da sidebar
+    const [prevPath, setPrevPath] = useState(location.pathname);
+    if (location.pathname !== prevPath) {
+        setPrevPath(location.pathname);
+        setLocalTab(null);
+    }
 
     useEffect(() => {
         const fetchDashboardData = async () => {
             setLoading(true);
             try {
-                // 1. Buscar todas as turmas
+                // 1. Buscar todas as turmas com o nome do criador (professor)
                 const { data: classesData, error: classesError } = await supabase
                     .from('classes')
-                    .select('*')
+                    .select(`
+                        *,
+                        profiles:created_by (firstname, lastname)
+                    `)
                     .order('created_at', { ascending: false });
 
                 if (classesError) throw classesError;
@@ -51,24 +71,30 @@ const Dashboard = () => {
         }
     }, [user]);
 
-    const handleEnroll = async (classId) => {
+    const confirmEnroll = (course) => {
+        setEnrollModal({ isOpen: true, course });
+    };
+
+    const handleEnroll = async () => {
+        if (!enrollModal.course) return;
+        setEnrolling(true);
         try {
             const { error } = await supabase
                 .from('class_members')
-                .insert([{ class_id: classId, user_id: user.id }]);
+                .insert([{ class_id: enrollModal.course.id, user_id: user.id }]);
 
             if (error) throw error;
 
             // Atualizar o estado local sem recarregar tudo
-            const newlyEnrolledClass = allClasses.find(c => c.id === classId);
-            if (newlyEnrolledClass) {
-                setMyClasses(prev => [newlyEnrolledClass, ...prev]);
-            }
-            setActiveTab('my_courses');
+            setMyClasses(prev => [enrollModal.course, ...prev]);
+            setLocalTab('my_courses');
+            setEnrollModal({ isOpen: false, course: null });
 
         } catch (error) {
             console.error("Erro ao realizar matrícula:", error.message);
             alert("Não foi possível realizar a matrícula no momento.");
+        } finally {
+            setEnrolling(false);
         }
     };
 
@@ -106,7 +132,7 @@ const Dashboard = () => {
                             ? 'text-blue-600'
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
-                    onClick={() => setActiveTab('my_courses')}
+                    onClick={() => setLocalTab('my_courses')}
                 >
                     Minhas Turmas
                     {activeTab === 'my_courses' && (
@@ -119,7 +145,7 @@ const Dashboard = () => {
                             ? 'text-blue-600'
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
-                    onClick={() => setActiveTab('catalog')}
+                    onClick={() => setLocalTab('catalog')}
                 >
                     Explorar Catálogo
                     {activeTab === 'catalog' && (
@@ -144,7 +170,7 @@ const Dashboard = () => {
                     </p>
                     {activeTab === 'my_courses' && (
                         <button
-                            onClick={() => setActiveTab('catalog')}
+                            onClick={() => setLocalTab('catalog')}
                             className="mt-6 px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                             Explorar Turmas
@@ -159,11 +185,42 @@ const Dashboard = () => {
                             key={course.id}
                             course={course}
                             isEnrolled={isEnrolled(course.id)}
-                            onEnroll={handleEnroll}
+                            onEnroll={() => confirmEnroll(course)}
                         />
                     ))}
                 </div>
             )}
+
+            {/* Modal de Matrícula */}
+            {enrollModal.isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] px-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-4">Confirmar Matrícula</h2>
+                        <p className="text-gray-600 mb-6">
+                            Você tem certeza que deseja participar da turma <strong>{enrollModal.course?.title}</strong>
+                            {enrollModal.course?.profiles ? ` com o(a) Prof. ${enrollModal.course.profiles.firstname}` : ''}?
+                        </p>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                disabled={enrolling}
+                                onClick={() => setEnrollModal({ isOpen: false, course: null })}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                disabled={enrolling}
+                                onClick={handleEnroll}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {enrolling ? 'Matriculando...' : 'Confirmar Matrícula'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

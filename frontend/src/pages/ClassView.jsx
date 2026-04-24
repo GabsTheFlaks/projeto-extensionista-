@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
-import { ArrowLeft, FileText, Video, BarChart, File, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Video, BarChart, File, AlertCircle, MessageSquare } from 'lucide-react';
 import ActivityComments from '../components/ActivityComments';
 
 const ClassView = () => {
@@ -76,6 +76,7 @@ const ClassView = () => {
             case 'drive': return <FileText className="w-5 h-5 text-blue-600" />;
             case 'video': return <Video className="w-5 h-5 text-red-600" />;
             case 'office': return <BarChart className="w-5 h-5 text-green-600" />;
+            case 'announcement': return <MessageSquare className="w-5 h-5 text-purple-600" />;
             default: return <File className="w-5 h-5 text-gray-500" />;
         }
     };
@@ -154,7 +155,7 @@ const ClassView = () => {
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h3 className="text-lg font-medium text-gray-900">
-                                                {activity.profiles?.firstname} postou um novo material: {activity.title}
+                                                {activity.profiles?.firstname} {activity.file_type === 'announcement' ? 'publicou um aviso' : 'postou um novo material'}: {activity.title}
                                             </h3>
                                             <p className="text-sm text-gray-500 mt-1">
                                                 {new Date(activity.created_at).toLocaleDateString('pt-BR', {
