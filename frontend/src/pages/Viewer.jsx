@@ -14,6 +14,9 @@ const Viewer = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const [links, setLinks] = useState([]);
+    const [activeLink, setActiveLink] = useState(null);
+
     // States de Submissão
     const [submissions, setSubmissions] = useState([]);
     const [mySubmission, setMySubmission] = useState(null);
@@ -59,6 +62,9 @@ const Viewer = () => {
                     if (activityData.file_type === 'drive') {
                         if (embedLink.includes('/view')) {
                             embedLink = embedLink.replace('/view', '/preview');
+                        } else if (embedLink.includes('docs.google.com') && embedLink.includes('/edit')) {
+                            // Suporte a Google Docs/Sheets/Slides formato edit -> preview
+                            embedLink = embedLink.replace('/edit', '/preview');
                         }
                     } else if (activityData.file_type === 'video') {
                         // Converter links do youtube para formato embed
@@ -70,7 +76,41 @@ const Viewer = () => {
                     }
                 }
 
-                setActivity({ ...activityData, embedLink });
+                // Identificar múltiplos links no corpo da descrição para a funcionalidade de listinha
+                let detectedLinks = [];
+                if (embedLink) {
+                     detectedLinks.push({ url: embedLink, type: activityData.file_type, label: "Material Principal" });
+                }
+
+                if (activityData.description) {
+                    const regex = /(https?:\/\/[^\s]+)/g;
+                    let m;
+                    while ((m = regex.exec(activityData.description)) !== null) {
+                        if (m[1] !== embedLink) {
+                            detectedLinks.push({ url: m[1], type: 'extra', label: "Link Adicional" });
+                        }
+                    }
+                }
+
+                // Formatar todos os links (convertendo view para preview e extraindo ids do youtube)
+                detectedLinks = detectedLinks.map((item, idx) => {
+                    let formattedUrl = item.url;
+                    if (formattedUrl.includes('drive.google.com') && formattedUrl.includes('/view')) {
+                         formattedUrl = formattedUrl.replace('/view', '/preview');
+                    } else if (formattedUrl.includes('docs.google.com') && formattedUrl.includes('/edit')) {
+                         formattedUrl = formattedUrl.replace('/edit', '/preview');
+                    } else if (formattedUrl.includes('youtube.com/watch') || formattedUrl.includes('youtu.be/') || formattedUrl.includes('youtube.com/shorts/')) {
+                         const ytRegex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?/\s]{11})/i;
+                         const match = formattedUrl.match(ytRegex);
+                         if (match && match[1]) formattedUrl = `https://www.youtube.com/embed/${match[1]}`;
+                    }
+                    return { ...item, formattedUrl, id: idx };
+                });
+
+                setLinks(detectedLinks);
+                if (detectedLinks.length > 0) setActiveLink(detectedLinks[0]);
+
+                setActivity(activityData);
 
                 // Se for tarefa, buscar submissões
                 if (activityData.file_type === 'assignment') {
@@ -225,11 +265,29 @@ const Viewer = () => {
                 )}
             </div>
 
+            {/* Sistema de Listinha de Links (Mult-links) */}
+            {links.length > 1 && (
+                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                     <p className="text-sm font-semibold text-gray-700 mb-3">Materiais Disponíveis nesta Aula:</p>
+                     <div className="flex flex-wrap gap-2">
+                         {links.map((linkItem) => (
+                             <button
+                                 key={linkItem.id}
+                                 onClick={() => setActiveLink(linkItem)}
+                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border ${activeLink?.id === linkItem.id ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                             >
+                                 Visualizar {linkItem.label} {linkItem.id + 1}
+                             </button>
+                         ))}
+                     </div>
+                 </div>
+            )}
+
             {/* Iframe Viewer 100% Responsivo */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full aspect-[4/3] sm:aspect-video flex flex-col">
-                {activity.embedLink ? (
+                {activeLink ? (
                     <iframe
-                        src={activity.embedLink}
+                        src={activeLink.formattedUrl}
                         className="w-full h-full border-0 flex-1"
                         allow="autoplay"
                         allowFullScreen

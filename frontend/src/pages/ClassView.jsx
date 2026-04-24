@@ -35,8 +35,8 @@ const ClassView = () => {
 
                 if (classError) throw classError;
 
-                // Verificar se é aluno matriculado ou admin
-                if (user.role !== 'admin') {
+                // Verificar permissão de acesso
+                if (classDetails.created_by !== user.id) {
                     const { error: memberError } = await supabase
                         .from('class_members')
                         .select('id')
@@ -44,7 +44,7 @@ const ClassView = () => {
                         .eq('user_id', user.id)
                         .single();
 
-                    if (memberError) {
+                    if (memberError && user.role !== 'admin') {
                         throw new Error("Você não tem permissão para acessar esta turma.");
                     }
                 }
@@ -244,7 +244,11 @@ const ClassView = () => {
 
                                     {activity.description && (
                                         <p className="mt-4 text-gray-700 whitespace-pre-wrap text-sm">
-                                            {activity.description}
+                                            {activity.description.split(/(https?:\/\/[^\s]+)/g).map((part, i) =>
+                                                part.match(/^https?:\/\//)
+                                                    ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{part}</a>
+                                                    : part
+                                            )}
                                         </p>
                                     )}
 

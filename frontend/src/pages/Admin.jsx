@@ -105,7 +105,7 @@ const Admin = () => {
 
         try {
             const { data: userData } = await supabase.auth.getUser();
-            const { error } = await supabase.from('classes').insert([
+            const { data: newClass, error } = await supabase.from('classes').insert([
                 {
                     title: classTitle,
                     description: classDesc,
@@ -113,9 +113,16 @@ const Admin = () => {
                     thumbnail_url: classImage,
                     created_by: userData.user.id
                 }
-            ]);
+            ]).select().single();
 
             if (error) throw error;
+
+            // Adicionar o professor à turma como membro automaticamente
+            if (newClass) {
+                await supabase.from('class_members').insert([
+                    { class_id: newClass.id, user_id: userData.user.id }
+                ]);
+            }
 
             showSuccess('Turma criada com sucesso!');
             setClassTitle('');
@@ -136,7 +143,7 @@ const Admin = () => {
 
         const lowerUrl = url.toLowerCase();
 
-        if (lowerUrl.includes('drive.google.com')) return 'drive';
+        if (lowerUrl.includes('drive.google.com') || lowerUrl.includes('docs.google.com')) return 'drive';
         if (lowerUrl.includes('youtube.com/watch') || lowerUrl.includes('youtu.be/') || lowerUrl.includes('youtube.com/shorts/')) return 'video';
         if (lowerUrl.includes('onedrive.live.com') || lowerUrl.includes('sharepoint.com') || lowerUrl.includes('canva.com')) return 'office';
 
@@ -385,7 +392,7 @@ const Admin = () => {
                                             </p>
                                         ) : (
                                             <p className="mt-1 text-xs text-gray-500">
-                                                Cole um link do Google Drive, YouTube, Microsoft Office 365 ou Canva.
+                                                Cole um link do Google Drive/Docs, YouTube, Microsoft Office 365 ou Canva.
                                             </p>
                                         )}
                                     </div>

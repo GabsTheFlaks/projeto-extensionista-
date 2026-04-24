@@ -64,8 +64,10 @@ const Dashboard = () => {
                 const userEnrolledData = countData.filter(m => m.user_id === user?.id);
                 const enrolledClassIds = new Set(userEnrolledData.map(m => m.class_id));
 
-                // 3. Separar as turmas matriculadas do catálogo geral
-                const enrolledClasses = classesWithCount.filter(c => enrolledClassIds.has(c.id));
+                // 3. Separar as turmas matriculadas (ou que ele mesmo criou) do catálogo geral
+                const enrolledClasses = classesWithCount.filter(
+                    c => enrolledClassIds.has(c.id) || c.created_by === user?.id
+                );
 
                 setAllClasses(classesWithCount);
                 setMyClasses(enrolledClasses);
@@ -126,8 +128,31 @@ const Dashboard = () => {
         }
     };
 
+    const handleArchiveCourse = async (course) => {
+        const isArchiving = !course.is_archived;
+        const msg = isArchiving ? `Deseja arquivar a turma "${course.title}"? Alunos não poderão mais acessá-la.` : `Deseja desarquivar a turma "${course.title}"?`;
+
+        if (!window.confirm(msg)) return;
+
+        try {
+            const { error } = await supabase
+                .from('classes')
+                .update({ is_archived: isArchiving })
+                .eq('id', course.id);
+
+            if (error) throw error;
+
+            // Força recarregamento completo para evitar falhas de RLS assincrono em cache local
+            window.location.reload();
+
+        } catch (err) {
+            console.error(err);
+            alert("Erro ao arquivar/desarquivar turma.");
+        }
+    };
+
     const handleDeleteCourse = async (course) => {
-        if (!window.confirm(`ATENÇÃO: Tem certeza que deseja excluir DEIFINITIVAMENTE a turma "${course.title}"? Todos os materiais, entregas e matrículas serão perdidos.`)) return;
+        if (!window.confirm(`ATENÇÃO: Tem certeza que deseja excluir DEFINITIVAMENTE a turma "${course.title}"? Todos os materiais, entregas e matrículas serão perdidos.`)) return;
         try {
             const { error } = await supabase
                 .from('classes')
@@ -136,8 +161,7 @@ const Dashboard = () => {
 
             if (error) throw error;
 
-            setAllClasses(prev => prev.filter(c => c.id !== course.id));
-            setMyClasses(prev => prev.filter(c => c.id !== course.id));
+            window.location.reload();
         } catch (err) {
             console.error(err);
             alert("Erro ao excluir turma. Verifique suas permissões.");
@@ -145,7 +169,11 @@ const Dashboard = () => {
     };
 
     const isEnrolled = (classId) => {
-        return myClasses.some(c => c.id === classId);
+        const course = allClasses.find(c => c.id === classId);
+        // O usuário é considerado "matriculado" (tem acesso) se estiver na lista de myClasses
+        // e se não for apenas o criador sem estar efetivamente matriculado (embora o criador tenha acesso).
+        // Para a UI, se ele for o criador, ele não precisa se matricular.
+        return myClasses.some(c => c.id === classId) || course?.created_by === user?.id;
     };
 
     if (loading) {
@@ -234,7 +262,7 @@ const Dashboard = () => {
                             onEnroll={() => confirmEnroll(course)}
                             onUnenroll={handleUnenroll}
                             onDelete={handleDeleteCourse}
-                            onArchive={(course) => alert("Funcionalidade de arquivamento (soft-delete) em desenvolvimento para " + course.title)}
+                            onArchive={handleArchiveCourse}
                         />
                     ))}
                 </div>

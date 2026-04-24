@@ -77,6 +77,7 @@ CREATE TABLE public.classes (
   description TEXT,
   category TEXT,
   thumbnail_url TEXT,
+  is_archived BOOLEAN DEFAULT false,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -85,7 +86,7 @@ ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Classes are viewable by everyone."
   ON public.classes FOR SELECT
-  USING (true);
+  USING (is_archived = false OR created_by = auth.uid());
 
 CREATE POLICY "Only admins can insert classes."
   ON public.classes FOR INSERT
@@ -163,6 +164,10 @@ CREATE POLICY "Activities are viewable by enrolled students or admins."
   USING (
     EXISTS (
       SELECT 1 FROM public.class_members WHERE class_id = public.class_activities.class_id AND user_id = auth.uid()
+    )
+    OR
+    EXISTS (
+      SELECT 1 FROM public.classes WHERE id = public.class_activities.class_id AND created_by = auth.uid()
     )
     OR
     EXISTS (

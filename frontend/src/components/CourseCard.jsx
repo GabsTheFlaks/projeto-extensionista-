@@ -30,13 +30,13 @@ const CourseCard = ({ course, isEnrolled, onEnroll, onUnenroll, onArchive, onDel
     const fallbackColor = headerColors[colorIndex];
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col h-72 group relative">
+        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col h-72 group relative ${course.is_archived ? 'opacity-80 grayscale-[50%]' : ''}`}>
 
             {/* O card inteiro atua como um link se estiver matriculado, ou apenas a parte de cima caso contrário */}
             <Link
                 to={isEnrolled ? `/class/${course.id}` : '#'}
                 onClick={(e) => {
-                    if (!isEnrolled) e.preventDefault();
+                    if (!isEnrolled || (course.is_archived && user?.id !== course.created_by)) e.preventDefault();
                 }}
                 className={`flex-1 flex flex-col relative ${isEnrolled ? 'cursor-pointer' : 'cursor-default'}`}
             >
@@ -170,7 +170,7 @@ const CourseCard = ({ course, isEnrolled, onEnroll, onUnenroll, onArchive, onDel
                                                 }}
                                                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                             >
-                                                Arquivar turma
+                                                {course.is_archived ? 'Desarquivar turma' : 'Arquivar turma'}
                                             </button>
                                             <button
                                                 onClick={(e) => {
