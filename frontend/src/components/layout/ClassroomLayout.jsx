@@ -139,27 +139,31 @@ const ClassroomLayout = () => {
 
                         {/* User Menu Dropdown Simples */}
                         <div className="hidden md:flex items-center gap-3">
-                            <div className="text-right">
-                                <p className="text-sm font-medium text-gray-700 leading-tight">
-                                    {user?.firstname || user?.email?.split('@')[0]}
-                                </p>
-                                <p className="text-xs text-gray-500 leading-tight">
-                                    {user?.role === 'admin' ? 'Professor' : 'Aluno'}
-                                </p>
-                            </div>
                             <div className="relative group">
-                                <button className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                                    <User className="w-5 h-5" />
+                                <button className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-600 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors overflow-hidden">
+                                    {user?.avatar_url ? (
+                                        <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User className="w-5 h-5" />
+                                    )}
                                 </button>
 
                                 {/* Dropdown */}
-                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 border border-gray-200 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all z-50">
-                                    <div className="px-4 py-2 border-b border-gray-100">
-                                        <p className="text-sm text-gray-700 truncate">{user?.email}</p>
+                                <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg py-1 border border-gray-200 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all z-50">
+                                    <div className="px-4 py-3 border-b border-gray-100 flex flex-col">
+                                        <p className="text-sm font-medium text-gray-800 truncate">
+                                            {user?.firstname || user?.email?.split('@')[0]} {user?.lastname || ''}
+                                        </p>
+                                        <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                                     </div>
-                                    <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs text-gray-500 text-center uppercase tracking-wider font-semibold rounded-t-md">
-                                        Role: {user?.role === 'admin' ? 'Admin' : 'Aluno'}
-                                    </div>
+
+                                    <Link
+                                        to="/settings"
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center transition-colors"
+                                    >
+                                        Configurações
+                                    </Link>
+
                                     <button
                                         onClick={handleLogout}
                                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center rounded-b-md transition-colors"

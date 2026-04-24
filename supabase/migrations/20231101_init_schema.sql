@@ -4,6 +4,8 @@ CREATE TABLE public.profiles (
   email TEXT NOT NULL,
   firstname TEXT,
   lastname TEXT,
+  bio TEXT,
+  avatar_url TEXT,
   role TEXT DEFAULT 'student' CHECK (role IN ('student', 'admin')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -28,6 +30,23 @@ CREATE POLICY "Users can update own profile."
     -- de usuários normais ou checar se a role se mantém igual.
     role = (SELECT role FROM public.profiles WHERE id = auth.uid())
   );
+
+
+-- Configuração do Storage para Avatares
+INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT DO NOTHING;
+
+CREATE POLICY "Avatar images are publicly accessible."
+  ON storage.objects FOR SELECT
+  USING ( bucket_id = 'avatars' );
+
+CREATE POLICY "Anyone can upload an avatar."
+  ON storage.objects FOR INSERT
+  WITH CHECK ( bucket_id = 'avatars' AND auth.role() = 'authenticated' );
+
+CREATE POLICY "Anyone can update their own avatar."
+  ON storage.objects FOR UPDATE
+  USING ( auth.uid() = owner )
+  WITH CHECK ( bucket_id = 'avatars' AND auth.role() = 'authenticated' );
 
 
 -- 2. Create Trigger to automatically create a profile when a new user signs up
@@ -58,6 +77,7 @@ CREATE TABLE public.classes (
   description TEXT,
   category TEXT,
   thumbnail_url TEXT,
+  is_archived BOOLEAN DEFAULT false,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -66,7 +86,7 @@ ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Classes are viewable by everyone."
   ON public.classes FOR SELECT
-  USING (true);
+  USING (is_archived = false OR created_by = auth.uid());
 
 CREATE POLICY "Only admins can insert classes."
   ON public.classes FOR INSERT
@@ -82,6 +102,14 @@ CREATE POLICY "Only admins can update classes."
     EXISTS (
       SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
     )
+  );
+
+CREATE POLICY "Only admins can delete classes."
+  ON public.classes FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+    ) AND created_by = auth.uid()
   );
 
 
@@ -112,6 +140,10 @@ CREATE POLICY "Admins can view all memberships."
     )
   );
 
+CREATE POLICY "Users can delete their own memberships (Unenroll)."
+  ON public.class_members FOR DELETE
+  USING (auth.uid() = user_id);
+
 
 -- 5. Create table `class_activities` (Mural de Postagens)
 CREATE TABLE public.class_activities (
@@ -135,6 +167,10 @@ CREATE POLICY "Activities are viewable by enrolled students or admins."
     )
     OR
     EXISTS (
+      SELECT 1 FROM public.classes WHERE id = public.class_activities.class_id AND created_by = auth.uid()
+    )
+    OR
+    EXISTS (
       SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
     )
   );
@@ -147,8 +183,73 @@ CREATE POLICY "Only admins can insert activities."
     )
   );
 
+CREATE POLICY "Only admins can update activities."
+  ON public.class_activities FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+    ) AND created_by = auth.uid()
+  );
+
+CREATE POLICY "Only admins can delete activities."
+  ON public.class_activities FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'
+    ) AND created_by = auth.uid()
+  );
+
 
 -- 6. Create table `activity_comments` (Comentários nas aulas)
+-- 6. Create table `class_submissions` (Entregas e Tarefas)
+CREATE TABLE public.class_submissions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  activity_id UUID REFERENCES public.class_activities(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  drive_link TEXT NOT NULL,
+  feedback TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(activity_id, user_id)
+);
+
+ALTER TABLE public.class_submissions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own submissions or admins view all."
+  ON public.class_submissions FOR SELECT
+  USING (
+    auth.uid() = user_id OR
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "Students can insert own submissions."
+  ON public.class_submissions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Admins can update submissions to give feedback."
+  ON public.class_submissions FOR UPDATE
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- 7. Create table `activity_comments` (Comentários nas aulas)
+-- 7. Create table `material_views` (Analytics/Tracking)
+CREATE TABLE public.material_views (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  activity_id UUID REFERENCES public.class_activities(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  viewed_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(activity_id, user_id)
+);
+
+ALTER TABLE public.material_views ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can insert view."
+  ON public.material_views FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Admins can select views."
+  ON public.material_views FOR SELECT
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- 8. Create table `activity_comments` (Comentários nas aulas)
 CREATE TABLE public.activity_comments (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   activity_id UUID REFERENCES public.class_activities(id) ON DELETE CASCADE,

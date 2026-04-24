@@ -1,8 +1,25 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Folder, User } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Folder, User, MoreVertical } from 'lucide-react';
+import { useAuth } from '../context/useAuth';
 
-const CourseCard = ({ course, isEnrolled, onEnroll }) => {
+const CourseCard = ({ course, isEnrolled, onEnroll, onUnenroll, onArchive, onDelete }) => {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef(null);
+
+    // Fechar menu ao clicar fora
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     // Array de cores para o header (fallback se não houver thumbnail)
     const headerColors = [
         'bg-blue-600', 'bg-green-600', 'bg-purple-600', 'bg-red-600', 'bg-indigo-600', 'bg-teal-600'
@@ -13,13 +30,13 @@ const CourseCard = ({ course, isEnrolled, onEnroll }) => {
     const fallbackColor = headerColors[colorIndex];
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col h-72 group relative">
+        <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow flex flex-col h-72 group relative ${course.is_archived ? 'opacity-80 grayscale-[50%]' : ''}`}>
 
             {/* O card inteiro atua como um link se estiver matriculado, ou apenas a parte de cima caso contrário */}
             <Link
                 to={isEnrolled ? `/class/${course.id}` : '#'}
                 onClick={(e) => {
-                    if (!isEnrolled) e.preventDefault();
+                    if (!isEnrolled || (course.is_archived && user?.id !== course.created_by)) e.preventDefault();
                 }}
                 className={`flex-1 flex flex-col relative ${isEnrolled ? 'cursor-pointer' : 'cursor-default'}`}
             >
@@ -76,23 +93,102 @@ const CourseCard = ({ course, isEnrolled, onEnroll }) => {
 
             {/* Rodapé e Ações */}
             <div className="h-12 border-t border-gray-100 px-4 flex items-center justify-between bg-white relative z-20">
-                <div className="flex items-center text-gray-400 hover:text-gray-600 cursor-pointer transition-colors tooltip" title="Arquivos da turma">
-                    <Folder className="w-5 h-5" />
+                <div className="flex items-center gap-3">
+                    <div
+                        onClick={() => {
+                            if (!isEnrolled && user?.id !== course.created_by) return;
+                            navigate(`/class/${course.id}`);
+                        }}
+                        className={`flex items-center text-gray-400 hover:text-gray-600 transition-colors tooltip ${isEnrolled || user?.id === course.created_by ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                        title="Materiais da turma"
+                    >
+                        <Folder className="w-5 h-5" />
+                    </div>
+                    {/* Contador de alunos dinâmico repassado pelo parent se existir */}
+                    {course.studentCount !== undefined && (
+                        <span className="text-xs text-gray-500 font-medium" title="Alunos matriculados">
+                            {course.studentCount} alunos
+                        </span>
+                    )}
                 </div>
 
-                {!isEnrolled && (
-                    <button
-                        onClick={() => onEnroll(course.id)}
-                        className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors px-3 py-1 rounded-md hover:bg-blue-50"
-                    >
-                        Participar
-                    </button>
-                )}
-                {isEnrolled && (
-                    <span className="text-xs text-green-600 font-medium px-2 py-1 bg-green-50 rounded-full">
-                        Matriculado
-                    </span>
-                )}
+                <div className="flex items-center gap-2">
+                    {!isEnrolled && user?.id !== course.created_by && (
+                        <button
+                            onClick={() => onEnroll(course.id)}
+                            className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors px-3 py-1 rounded-md hover:bg-blue-50"
+                        >
+                            Participar
+                        </button>
+                    )}
+
+                    {/* Kebab Menu (3 pontos) */}
+                    {(isEnrolled || user?.id === course.created_by) && (
+                        <div className="relative" ref={menuRef}>
+                            <button
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMenuOpen(!menuOpen);
+                                }}
+                                className="p-1 rounded-full hover:bg-gray-100 text-gray-500 focus:outline-none focus:bg-gray-200 transition-colors"
+                            >
+                                <MoreVertical className="w-5 h-5" />
+                            </button>
+
+                            {menuOpen && (
+                                <div className="absolute right-0 bottom-8 mb-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+                                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                        Mover
+                                    </button>
+                                    <button className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100 pb-2 mb-1">
+                                        Ocultar
+                                    </button>
+
+                                    {/* Opções de Aluno */}
+                                    {isEnrolled && user?.id !== course.created_by && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                setMenuOpen(false);
+                                                if (onUnenroll) onUnenroll(course);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                            Cancelar inscrição
+                                        </button>
+                                    )}
+
+                                    {/* Opções Exclusivas de Professor */}
+                                    {user?.id === course.created_by && (
+                                        <>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    setMenuOpen(false);
+                                                    if (onArchive) onArchive(course);
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                            >
+                                                {course.is_archived ? 'Desarquivar turma' : 'Arquivar turma'}
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    setMenuOpen(false);
+                                                    if (onDelete) onDelete(course);
+                                                }}
+                                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                                            >
+                                                Excluir turma
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

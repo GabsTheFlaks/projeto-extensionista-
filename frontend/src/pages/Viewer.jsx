@@ -14,6 +14,15 @@ const Viewer = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const [links, setLinks] = useState([]);
+    const [activeLink, setActiveLink] = useState(null);
+
+    // States de Submissão
+    const [submissions, setSubmissions] = useState([]);
+    const [mySubmission, setMySubmission] = useState(null);
+    const [subLink, setSubLink] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
     useEffect(() => {
         const fetchActivityData = async () => {
             setLoading(true);
@@ -53,6 +62,9 @@ const Viewer = () => {
                     if (activityData.file_type === 'drive') {
                         if (embedLink.includes('/view')) {
                             embedLink = embedLink.replace('/view', '/preview');
+                        } else if (embedLink.includes('docs.google.com') && embedLink.includes('/edit')) {
+                            // Suporte a Google Docs/Sheets/Slides formato edit -> preview
+                            embedLink = embedLink.replace('/edit', '/preview');
                         }
                     } else if (activityData.file_type === 'video') {
                         // Converter links do youtube para formato embed
@@ -64,7 +76,60 @@ const Viewer = () => {
                     }
                 }
 
-                setActivity({ ...activityData, embedLink });
+                // Identificar múltiplos links no corpo da descrição para a funcionalidade de listinha
+                let detectedLinks = [];
+                if (embedLink) {
+                     detectedLinks.push({ url: embedLink, type: activityData.file_type, label: "Material Principal" });
+                }
+
+                if (activityData.description) {
+                    const regex = /(https?:\/\/[^\s]+)/g;
+                    let m;
+                    while ((m = regex.exec(activityData.description)) !== null) {
+                        if (m[1] !== embedLink) {
+                            detectedLinks.push({ url: m[1], type: 'extra', label: "Link Adicional" });
+                        }
+                    }
+                }
+
+                // Formatar todos os links (convertendo view para preview e extraindo ids do youtube)
+                detectedLinks = detectedLinks.map((item, idx) => {
+                    let formattedUrl = item.url;
+                    if (formattedUrl.includes('drive.google.com') && formattedUrl.includes('/view')) {
+                         formattedUrl = formattedUrl.replace('/view', '/preview');
+                    } else if (formattedUrl.includes('docs.google.com') && formattedUrl.includes('/edit')) {
+                         formattedUrl = formattedUrl.replace('/edit', '/preview');
+                    } else if (formattedUrl.includes('youtube.com/watch') || formattedUrl.includes('youtu.be/') || formattedUrl.includes('youtube.com/shorts/')) {
+                         const ytRegex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?/\s]{11})/i;
+                         const match = formattedUrl.match(ytRegex);
+                         if (match && match[1]) formattedUrl = `https://www.youtube.com/embed/${match[1]}`;
+                    }
+                    return { ...item, formattedUrl, id: idx };
+                });
+
+                setLinks(detectedLinks);
+                if (detectedLinks.length > 0) setActiveLink(detectedLinks[0]);
+
+                setActivity(activityData);
+
+                // Se for tarefa, buscar submissões
+                if (activityData.file_type === 'assignment') {
+                    const { data: subs, error: subError } = await supabase
+                        .from('class_submissions')
+                        .select('*, profiles(firstname, lastname)')
+                        .eq('activity_id', activityId);
+
+                    if (!subError && subs) {
+                        setSubmissions(subs);
+                        const userSub = subs.find(s => s.user_id === user.id);
+                        if (userSub) setMySubmission(userSub);
+                    }
+                }
+
+                // Disparar o registro visualização
+                if (user.role === 'student') {
+                    await supabase.from('material_views').insert([{ activity_id: activityId, user_id: user.id }]).select();
+                }
 
             } catch (err) {
                 console.error("Erro ao carregar atividade:", err);
@@ -79,22 +144,42 @@ const Viewer = () => {
         }
     }, [activityId, user]);
 
+    const handleAddSubmission = async (e) => {
+        e.preventDefault();
+        if (!subLink) return;
+        setSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('class_submissions')
+                .insert([{ activity_id: activityId, user_id: user.id, drive_link: subLink }]);
+
+            if (error) throw error;
+            window.location.reload();
+        } catch (error) {
+            alert("Erro ao enviar entrega: " + error.message);
+            setSubmitting(false);
+        }
+    };
+
     const getFileBadge = (fileType) => {
         const icons = {
             drive: <FileText className="w-4 h-4 mr-1 text-blue-100" />,
             video: <Video className="w-4 h-4 mr-1 text-red-100" />,
-            office: <BarChart className="w-4 h-4 mr-1 text-green-100" />
+            office: <BarChart className="w-4 h-4 mr-1 text-green-100" />,
+            assignment: <FileText className="w-4 h-4 mr-1 text-indigo-100" />
         };
         const colors = {
             drive: 'bg-blue-600',
             video: 'bg-red-600',
-            office: 'bg-green-600'
+            office: 'bg-green-600',
+            assignment: 'bg-indigo-600'
         };
 
         let label = 'ARQUIVO';
         if (fileType === 'drive') label = 'GOOGLE DRIVE';
         if (fileType === 'video') label = 'YOUTUBE';
         if (fileType === 'office') label = 'DOCUMENTO EXTERNO';
+        if (fileType === 'assignment') label = 'TAREFA';
 
         return (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${colors[fileType] || 'bg-gray-500'}`}>
@@ -180,11 +265,29 @@ const Viewer = () => {
                 )}
             </div>
 
+            {/* Sistema de Listinha de Links (Mult-links) */}
+            {links.length > 1 && (
+                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                     <p className="text-sm font-semibold text-gray-700 mb-3">Materiais Disponíveis nesta Aula:</p>
+                     <div className="flex flex-wrap gap-2">
+                         {links.map((linkItem) => (
+                             <button
+                                 key={linkItem.id}
+                                 onClick={() => setActiveLink(linkItem)}
+                                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors border ${activeLink?.id === linkItem.id ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                             >
+                                 Visualizar {linkItem.label} {linkItem.id + 1}
+                             </button>
+                         ))}
+                     </div>
+                 </div>
+            )}
+
             {/* Iframe Viewer 100% Responsivo */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden w-full aspect-[4/3] sm:aspect-video flex flex-col">
-                {activity.embedLink ? (
+                {activeLink ? (
                     <iframe
-                        src={activity.embedLink}
+                        src={activeLink.formattedUrl}
                         className="w-full h-full border-0 flex-1"
                         allow="autoplay"
                         allowFullScreen
@@ -198,6 +301,53 @@ const Viewer = () => {
                     </div>
                 )}
             </div>
+
+            {/* Seção de Entregas (Se for Tarefa) */}
+            {activity.file_type === 'assignment' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Seu Trabalho</h2>
+                    {user?.role === 'admin' ? (
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600 mb-2">Entregas dos alunos ({submissions.length}):</p>
+                            {submissions.length === 0 ? (
+                                <p className="text-sm text-gray-500 italic">Nenhum aluno entregou ainda.</p>
+                            ) : (
+                                <div className="border border-gray-200 rounded-md divide-y divide-gray-100">
+                                    {submissions.map(sub => (
+                                        <div key={sub.id} className="p-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium">{sub.profiles?.firstname} {sub.profiles?.lastname}</span>
+                                            <a href={sub.drive_link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">Ver Entrega</a>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            {mySubmission ? (
+                                <div className="bg-green-50 text-green-700 p-4 rounded-md border border-green-200">
+                                    <p className="font-medium">Você já enviou esta tarefa!</p>
+                                    <a href={mySubmission.drive_link} target="_blank" rel="noopener noreferrer" className="text-sm underline mt-1 inline-block">Ver arquivo enviado</a>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleAddSubmission} className="flex gap-2">
+                                    <input
+                                        type="url"
+                                        placeholder="Cole o link do seu trabalho (Drive, etc)..."
+                                        required
+                                        value={subLink}
+                                        onChange={(e) => setSubLink(e.target.value)}
+                                        className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                    />
+                                    <button disabled={submitting} type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                                        {submitting ? 'Enviando...' : 'Entregar'}
+                                    </button>
+                                </form>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Seção de Comentários focada na Aula */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
