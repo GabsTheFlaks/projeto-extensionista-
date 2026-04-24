@@ -39,24 +39,12 @@ const Settings = () => {
             const fileName = `${user.id}-${Math.random()}.${fileExt}`;
             const filePath = `${fileName}`;
 
-            // Tratativa para erro: Criação proativa de bucket caso não exista e falhe o preflight.
             let { error: uploadError } = await supabase.storage
                 .from('avatars')
                 .upload(filePath, file);
 
             if (uploadError) {
-                // Caso falhe por bucket not found, tentamos a criação (para garantir em setups novos/limpos)
-                if (uploadError.message.includes('bucket') || uploadError.statusCode === '404' || uploadError.message.includes('not found')) {
-                    const { error: bucketError } = await supabase.storage.createBucket('avatars', { public: true });
-                    if (bucketError && !bucketError.message.includes('already exists')) {
-                        throw new Error(`Erro ao configurar servidor de imagens: ${bucketError.message}. Configure o bucket no painel.`);
-                    }
-                    // Tenta subir novamente após criar o bucket
-                    const { error: retryError } = await supabase.storage.from('avatars').upload(filePath, file);
-                    if (retryError) throw retryError;
-                } else {
-                     throw uploadError;
-                }
+                throw uploadError;
             }
 
             // Obter URL pública
