@@ -43,20 +43,31 @@ const Dashboard = () => {
 
                 if (classesError) throw classesError;
 
-                // 2. Buscar as matrículas do usuário
-                const { data: membersData, error: membersError } = await supabase
+                // 1.5 Buscar a contagem de alunos matriculados por turma
+                const { data: countData, error: countError } = await supabase
                     .from('class_members')
-                    .select('class_id')
-                    .eq('user_id', user.id);
+                    .select('class_id');
 
-                if (membersError) throw membersError;
+                if (countError) throw countError;
 
-                const enrolledClassIds = new Set(membersData.map(m => m.class_id));
+                const classCounts = countData.reduce((acc, curr) => {
+                    acc[curr.class_id] = (acc[curr.class_id] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const classesWithCount = classesData.map(c => ({
+                    ...c,
+                    studentCount: classCounts[c.id] || 0
+                }));
+
+                // 2. Buscar as matrículas específicas do usuário logado
+                const userEnrolledData = countData.filter(m => m.user_id === user?.id);
+                const enrolledClassIds = new Set(userEnrolledData.map(m => m.class_id));
 
                 // 3. Separar as turmas matriculadas do catálogo geral
-                const enrolledClasses = classesData.filter(c => enrolledClassIds.has(c.id));
+                const enrolledClasses = classesWithCount.filter(c => enrolledClassIds.has(c.id));
 
-                setAllClasses(classesData);
+                setAllClasses(classesWithCount);
                 setMyClasses(enrolledClasses);
 
             } catch (error) {
@@ -95,6 +106,41 @@ const Dashboard = () => {
             alert("Não foi possível realizar a matrícula no momento.");
         } finally {
             setEnrolling(false);
+        }
+    };
+
+    const handleUnenroll = async (course) => {
+        if (!window.confirm(`Tem certeza que deseja cancelar sua inscrição na turma ${course.title}?`)) return;
+        try {
+            const { error } = await supabase
+                .from('class_members')
+                .delete()
+                .eq('class_id', course.id)
+                .eq('user_id', user.id);
+
+            if (error) throw error;
+            setMyClasses(prev => prev.filter(c => c.id !== course.id));
+        } catch (err) {
+            console.error(err);
+            alert("Erro ao cancelar inscrição.");
+        }
+    };
+
+    const handleDeleteCourse = async (course) => {
+        if (!window.confirm(`ATENÇÃO: Tem certeza que deseja excluir DEIFINITIVAMENTE a turma "${course.title}"? Todos os materiais, entregas e matrículas serão perdidos.`)) return;
+        try {
+            const { error } = await supabase
+                .from('classes')
+                .delete()
+                .eq('id', course.id);
+
+            if (error) throw error;
+
+            setAllClasses(prev => prev.filter(c => c.id !== course.id));
+            setMyClasses(prev => prev.filter(c => c.id !== course.id));
+        } catch (err) {
+            console.error(err);
+            alert("Erro ao excluir turma. Verifique suas permissões.");
         }
     };
 
@@ -186,6 +232,9 @@ const Dashboard = () => {
                             course={course}
                             isEnrolled={isEnrolled(course.id)}
                             onEnroll={() => confirmEnroll(course)}
+                            onUnenroll={handleUnenroll}
+                            onDelete={handleDeleteCourse}
+                            onArchive={(course) => alert("Funcionalidade de arquivamento (soft-delete) em desenvolvimento para " + course.title)}
                         />
                     ))}
                 </div>

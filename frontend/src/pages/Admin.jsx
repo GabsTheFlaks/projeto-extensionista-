@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Plus, Upload, CheckCircle2 } from 'lucide-react';
 
 const Admin = () => {
-    // Tab de navegação no painel (Criar Turma vs Postar Material)
+    // Tab de navegação no painel (Criar Turma vs Postar Material vs Relatórios)
     const [activeTab, setActiveTab] = useState('class');
 
     // States: Criar Turma
@@ -23,11 +23,15 @@ const Admin = () => {
     const [matLoading, setMatLoading] = useState(false);
     const [linkError, setLinkError] = useState(''); // Erro de validação de link
 
+    // States: Analytics/Relatórios
+    const [analytics, setAnalytics] = useState({ totalStudents: 0, totalSubmissions: 0, topMaterials: [] });
+    const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
     // Mensagens de Sucesso
     const [successMessage, setSuccessMessage] = useState('');
 
     useEffect(() => {
-        // Busca as turmas que o admin criou ou todas as turmas
+        // Busca as turmas que o admin criou
         const fetchClasses = async () => {
             const { data, error } = await supabase
                 .from('classes')
@@ -40,7 +44,55 @@ const Admin = () => {
             }
         };
         fetchClasses();
-    }, [activeTab]);
+    }, []);
+
+    useEffect(() => {
+        const fetchAnalytics = async () => {
+            setLoadingAnalytics(true);
+            try {
+                // Alunos totais do professor
+            const { count: totalStudents } = await supabase.from('class_members')
+                .select('id', { count: 'exact' })
+                .in('class_id', myClasses.map(c => c.id));
+
+            // Total de Entregas recebidas
+            const { data: subsData } = await supabase.from('class_submissions')
+                .select('id, class_activities!inner(class_id)')
+                .in('class_activities.class_id', myClasses.map(c => c.id));
+
+            // Views para achar o TOP material
+            const { data: viewsData } = await supabase.from('material_views')
+                .select('activity_id, class_activities!inner(title, class_id)')
+                .in('class_activities.class_id', myClasses.map(c => c.id));
+
+            const viewCounts = {};
+            if (viewsData) {
+                viewsData.forEach(v => {
+                    const id = v.activity_id;
+                    if (!viewCounts[id]) viewCounts[id] = { title: v.class_activities.title, views: 0 };
+                    viewCounts[id].views += 1;
+                });
+            }
+
+            const topMaterials = Object.values(viewCounts).sort((a, b) => b.views - a.views).slice(0, 5);
+
+                setAnalytics({
+                    totalStudents: totalStudents || 0,
+                    totalSubmissions: subsData ? subsData.length : 0,
+                    topMaterials
+                });
+
+            } catch (error) {
+                console.error("Erro analytics", error);
+            } finally {
+                setLoadingAnalytics(false);
+            }
+        };
+
+        if (activeTab === 'reports' && myClasses.length > 0) {
+             fetchAnalytics();
+        }
+    }, [activeTab, myClasses]);
 
     const showSuccess = (msg) => {
         setSuccessMessage(msg);
@@ -79,98 +131,66 @@ const Admin = () => {
         }
     };
 
-const handlePostMaterial = async (e) => {
-  e.preventDefault();
-  if (!matFile) return alert("Selecione um arquivo!");
+    const validateLink = (url) => {
+        if (!url) return null; // Link é opcional no schema, mas se tiver, valida.
 
-  try {
-    setMatLoading(true);
-    console.log("1. Solicitando link de upload para o Supabase...");
+        const lowerUrl = url.toLowerCase();
 
-    // Passo 1: Pede a URL de upload à Edge Function (só metadados, sem o arquivo)
-    // O JWT do usuário é enviado automaticamente pelo supabase.functions.invoke
+        if (lowerUrl.includes('drive.google.com')) return 'drive';
+        if (lowerUrl.includes('youtube.com/watch') || lowerUrl.includes('youtu.be/') || lowerUrl.includes('youtube.com/shorts/')) return 'video';
+        if (lowerUrl.includes('onedrive.live.com') || lowerUrl.includes('sharepoint.com') || lowerUrl.includes('canva.com')) return 'office';
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+        return 'invalid';
+    };
 
-    const response = await fetch(`${supabaseUrl}/functions/v1/drive-upload`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${anonKey}`,
-            'X-User-Token': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            title: matFile.name,
-            mimeType: matFile.type || "application/octet-stream",
-            size: matFile.size,
-        })
-    });
+    const handlePostMaterial = async (e) => {
+        e.preventDefault();
+        setLinkError('');
+        setMatLoading(true);
 
-    let data;
-    try {
-        data = await response.json();
-    } catch {
-        data = { error: "Erro ao ler a resposta do servidor." };
-    }
+        try {
+            // Valida o link antes de enviar
+            let finalFileType = matType; // fallback
+            let finalLink = matLink.trim() !== '' ? matLink : null;
 
-    if (!response.ok) throw new Error(`Erro na autorização: ${data.error || response.statusText}`);
-    if (!data?.uploadUrl) throw new Error("A URL de upload não foi gerada.");
+            if (finalLink) {
+                const detectedType = validateLink(finalLink);
+                if (detectedType === 'invalid') {
+                    setLinkError("Link inválido. Use links do Google Drive, YouTube, Microsoft Office 365 ou Canva.");
+                    setMatLoading(false);
+                    return;
+                }
+                finalFileType = detectedType; // "drive", "video" ou "office"
+            }
 
-    console.log("2. Link recebido! Enviando arquivo direto para o Google...");
+            const { data: userData } = await supabase.auth.getUser();
 
-    // Passo 2: Envia o arquivo DIRETAMENTE para o Google Drive (não passa pela Edge Function)
-    const uploadRes = await fetch(data.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": matFile.type || "application/octet-stream",
-        "Content-Length": String(matFile.size),
-      },
-      body: matFile,
-    });
+            // Salva a atividade no banco
+            const { error: dbError } = await supabase.from('class_activities').insert([
+                {
+                    class_id: selectedClass,
+                    title: matTitle,
+                    description: matDesc,
+                    file_type: finalFileType,
+                    drive_link: finalLink, // reaproveitamos a coluna drive_link para salvar qualquer url
+                    created_by: userData.user.id
+                }
+            ]);
 
-    if (!uploadRes.ok) {
-      const err = await uploadRes.text();
-      console.error("Resposta do Google Drive:", err);
-      throw new Error("O Google Drive recusou o arquivo durante o envio.");
-    }
+            if (dbError) throw dbError;
 
-    // Captura o fileId e o link gerados pelo Google Drive
-    const uploadData = await uploadRes.json();
-    const fileId = uploadData.id;
-    const driveLink = uploadData.webViewLink;
+            showSuccess('Material postado com sucesso no Mural!');
+            setMatTitle('');
+            setMatDesc('');
+            setMatLink('');
 
-    console.log("3. Upload concluído!", { fileId, driveLink });
-
-    // ─── Continue aqui salvando no Supabase se necessário ───
-    const { data: userData } = await supabase.auth.getUser();
-    const { error: dbError } = await supabase.from('class_activities').insert([
-        {
-            class_id: selectedClass,
-            title: matTitle,
-            description: matDesc,
-            file_type: matType,
-            drive_link: driveLink,
-            created_by: userData.user.id
+        } catch (error) {
+            console.error("Erro ao postar material:", error.message);
+            alert("Erro ao postar material: " + error.message);
+        } finally {
+            setMatLoading(false);
         }
-    ]);
-
-    if (dbError) throw dbError;
-
-    showSuccess("Material enviado com sucesso para o Drive!");
-    setMatTitle('');
-    setMatDesc('');
-    setMatFile(null);
-
-  } catch (err) {
-    console.error("Erro ao postar material:", err);
-    alert(`Erro ao postar material: ${err.message}`);
-  } finally {
-    setMatLoading(false);
-  }
-};
+    };
 
     return (
         <div className="max-w-3xl mx-auto py-8">
@@ -204,6 +224,17 @@ const handlePostMaterial = async (e) => {
                 >
                     Postar Material
                     {activeTab === 'material' && (
+                        <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md"></span>
+                    )}
+                </button>
+                <button
+                    className={`pb-4 px-4 text-sm font-medium transition-colors relative ${
+                        activeTab === 'reports' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('reports')}
+                >
+                    Relatórios
+                    {activeTab === 'reports' && (
                         <span className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-md"></span>
                     )}
                 </button>
@@ -332,7 +363,8 @@ const handlePostMaterial = async (e) => {
                                         }}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                                     >
-                                        <option value="pdf">Material de Aula (Com Link)</option>
+                                        <option value="pdf">Material de Aula</option>
+                                        <option value="assignment">Atividade/Tarefa (Recebe Entregas)</option>
                                         <option value="announcement">Aviso Geral (Sem Link)</option>
                                     </select>
                                 </div>
@@ -375,6 +407,44 @@ const handlePostMaterial = async (e) => {
                                 </button>
                             </div>
                         </form>
+                    )}
+                </div>
+            )}
+
+            {/* Form: Relatórios */}
+            {activeTab === 'reports' && (
+                <div className="space-y-6">
+                    {loadingAnalytics ? (
+                        <div className="text-center py-10 text-gray-500">Carregando dados...</div>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center justify-center">
+                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wide">Total de Alunos Matriculados</p>
+                                    <h3 className="text-4xl font-bold text-blue-600 mt-2">{analytics.totalStudents}</h3>
+                                </div>
+                                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm flex flex-col items-center justify-center">
+                                    <p className="text-gray-500 text-sm font-medium uppercase tracking-wide">Tarefas Entregues</p>
+                                    <h3 className="text-4xl font-bold text-green-600 mt-2">{analytics.totalSubmissions}</h3>
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                                <h3 className="text-lg font-medium text-gray-800 mb-4">Materiais Mais Acessados</h3>
+                                {analytics.topMaterials.length === 0 ? (
+                                    <p className="text-sm text-gray-500 italic">Nenhum dado de visualização registrado ainda.</p>
+                                ) : (
+                                    <ul className="divide-y divide-gray-100">
+                                        {analytics.topMaterials.map((item, idx) => (
+                                            <li key={idx} className="py-3 flex justify-between">
+                                                <span className="text-gray-800">{item.title}</span>
+                                                <span className="font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full text-xs">{item.views} visualizações</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </>
                     )}
                 </div>
             )}

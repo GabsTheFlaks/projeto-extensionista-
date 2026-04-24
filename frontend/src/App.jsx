@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import ClassView from './pages/ClassView';
 import Viewer from './pages/Viewer';
 import Admin from './pages/Admin';
+import Settings from './pages/Settings';
 
 const ConfigWarning = () => {
     const isDefaultConfig = import.meta.env.VITE_SUPABASE_URL === undefined || import.meta.env.VITE_SUPABASE_URL.includes('localhost');
@@ -55,6 +56,7 @@ const AppRoutes = () => {
                         <Route path="/catalog" element={<Dashboard />} /> {/* Reaproveita o Dashboard */}
                         <Route path="/class/:id" element={<ClassView />} />
                         <Route path="/activity/:activityId" element={<Viewer />} />
+                        <Route path="/settings" element={<Settings />} />
 
                         {/* Rotas de Admin */}
                         <Route element={<AdminRoute />}>

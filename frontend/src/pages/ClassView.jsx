@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
-import { ArrowLeft, FileText, Video, BarChart, File, AlertCircle, MessageSquare } from 'lucide-react';
+import { ArrowLeft, FileText, Video, BarChart, File, AlertCircle, MessageSquare, MoreVertical, Edit2, Trash2 } from 'lucide-react';
 import ActivityComments from '../components/ActivityComments';
 
 const ClassView = () => {
@@ -15,6 +15,12 @@ const ClassView = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [expandedActivity, setExpandedActivity] = useState(null);
+
+    // Gestão de Edição (Admin/Prof)
+    const [editingActivity, setEditingActivity] = useState(null);
+    const [editTitle, setEditTitle] = useState('');
+    const [editDesc, setEditDesc] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
 
     useEffect(() => {
         const fetchClassData = async () => {
@@ -77,8 +83,59 @@ const ClassView = () => {
             case 'video': return <Video className="w-5 h-5 text-red-600" />;
             case 'office': return <BarChart className="w-5 h-5 text-green-600" />;
             case 'announcement': return <MessageSquare className="w-5 h-5 text-purple-600" />;
+            case 'assignment': return <FileText className="w-5 h-5 text-indigo-600" />;
             default: return <File className="w-5 h-5 text-gray-500" />;
         }
+    };
+
+    const handleDeleteActivity = async (activityId) => {
+        if (!window.confirm("Tem certeza que deseja excluir esta postagem?")) return;
+
+        try {
+            const { error } = await supabase
+                .from('class_activities')
+                .delete()
+                .eq('id', activityId);
+
+            if (error) throw error;
+            setActivities(prev => prev.filter(a => a.id !== activityId));
+        } catch (err) {
+            console.error("Erro ao excluir:", err.message);
+            alert("Erro ao excluir atividade.");
+        }
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editingActivity) return;
+        setSavingEdit(true);
+
+        try {
+            const { error } = await supabase
+                .from('class_activities')
+                .update({ title: editTitle, description: editDesc })
+                .eq('id', editingActivity.id);
+
+            if (error) throw error;
+
+            setActivities(prev => prev.map(a =>
+                a.id === editingActivity.id
+                    ? { ...a, title: editTitle, description: editDesc }
+                    : a
+            ));
+
+            setEditingActivity(null);
+        } catch (err) {
+            console.error("Erro ao salvar:", err.message);
+            alert("Erro ao atualizar atividade.");
+        } finally {
+            setSavingEdit(false);
+        }
+    };
+
+    const startEditing = (activity) => {
+        setEditingActivity(activity);
+        setEditTitle(activity.title);
+        setEditDesc(activity.description || '');
     };
 
     if (loading) {
@@ -147,15 +204,35 @@ const ClassView = () => {
                     activities.map((activity) => (
                         <div key={activity.id} className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
                             {/* Cabeçalho da Atividade */}
-                            <div className="p-4 sm:p-6 flex gap-4">
+                            <div className="p-4 sm:p-6 flex gap-4 relative group">
+                                {/* Kebab menu prof */}
+                                {user?.role === 'admin' && (
+                                    <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                        <button
+                                            onClick={() => startEditing(activity)}
+                                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                            title="Editar"
+                                        >
+                                            <Edit2 className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteActivity(activity.id)}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                            title="Excluir"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="mt-1 bg-gray-100 p-3 rounded-full flex-shrink-0 h-min">
                                     {getFileIcon(activity.file_type)}
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 pr-16">
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h3 className="text-lg font-medium text-gray-900">
-                                                {activity.profiles?.firstname} {activity.file_type === 'announcement' ? 'publicou um aviso' : 'postou um novo material'}: {activity.title}
+                                                {activity.profiles?.firstname} {activity.file_type === 'announcement' ? 'publicou um aviso' : activity.file_type === 'assignment' ? 'postou uma nova tarefa' : 'postou um novo material'}: {activity.title}
                                             </h3>
                                             <p className="text-sm text-gray-500 mt-1">
                                                 {new Date(activity.created_at).toLocaleDateString('pt-BR', {
@@ -176,6 +253,7 @@ const ClassView = () => {
                                         <div
                                             onClick={() => {
                                                 if (activity.file_type === 'office') {
+                                                    if (user?.role === 'student') supabase.from('material_views').insert([{ activity_id: activity.id, user_id: user.id }]).select().then();
                                                     window.open(activity.drive_link, "_blank", "noopener,noreferrer");
                                                 } else {
                                                     navigate(`/activity/${activity.id}`);
@@ -219,6 +297,53 @@ const ClassView = () => {
                     ))
                 )}
             </div>
+
+            {/* Modal de Edição */}
+            {editingActivity && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] px-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-4">Editar Postagem</h2>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
+                                <input
+                                    type="text"
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                                <textarea
+                                    rows="4"
+                                    value={editDesc}
+                                    onChange={(e) => setEditDesc(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+                            <button
+                                disabled={savingEdit}
+                                onClick={() => setEditingActivity(null)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                disabled={savingEdit}
+                                onClick={handleSaveEdit}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                                {savingEdit ? 'Salvando...' : 'Salvar Alterações'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

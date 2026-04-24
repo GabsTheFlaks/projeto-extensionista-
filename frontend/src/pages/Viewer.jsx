@@ -14,6 +14,12 @@ const Viewer = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    // States de Submissão
+    const [submissions, setSubmissions] = useState([]);
+    const [mySubmission, setMySubmission] = useState(null);
+    const [subLink, setSubLink] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
     useEffect(() => {
         const fetchActivityData = async () => {
             setLoading(true);
@@ -66,6 +72,25 @@ const Viewer = () => {
 
                 setActivity({ ...activityData, embedLink });
 
+                // Se for tarefa, buscar submissões
+                if (activityData.file_type === 'assignment') {
+                    const { data: subs, error: subError } = await supabase
+                        .from('class_submissions')
+                        .select('*, profiles(firstname, lastname)')
+                        .eq('activity_id', activityId);
+
+                    if (!subError && subs) {
+                        setSubmissions(subs);
+                        const userSub = subs.find(s => s.user_id === user.id);
+                        if (userSub) setMySubmission(userSub);
+                    }
+                }
+
+                // Disparar o registro visualização
+                if (user.role === 'student') {
+                    await supabase.from('material_views').insert([{ activity_id: activityId, user_id: user.id }]).select();
+                }
+
             } catch (err) {
                 console.error("Erro ao carregar atividade:", err);
                 setError(err.message || "Erro ao carregar o visualizador de aula.");
@@ -79,22 +104,42 @@ const Viewer = () => {
         }
     }, [activityId, user]);
 
+    const handleAddSubmission = async (e) => {
+        e.preventDefault();
+        if (!subLink) return;
+        setSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('class_submissions')
+                .insert([{ activity_id: activityId, user_id: user.id, drive_link: subLink }]);
+
+            if (error) throw error;
+            window.location.reload();
+        } catch (error) {
+            alert("Erro ao enviar entrega: " + error.message);
+            setSubmitting(false);
+        }
+    };
+
     const getFileBadge = (fileType) => {
         const icons = {
             drive: <FileText className="w-4 h-4 mr-1 text-blue-100" />,
             video: <Video className="w-4 h-4 mr-1 text-red-100" />,
-            office: <BarChart className="w-4 h-4 mr-1 text-green-100" />
+            office: <BarChart className="w-4 h-4 mr-1 text-green-100" />,
+            assignment: <FileText className="w-4 h-4 mr-1 text-indigo-100" />
         };
         const colors = {
             drive: 'bg-blue-600',
             video: 'bg-red-600',
-            office: 'bg-green-600'
+            office: 'bg-green-600',
+            assignment: 'bg-indigo-600'
         };
 
         let label = 'ARQUIVO';
         if (fileType === 'drive') label = 'GOOGLE DRIVE';
         if (fileType === 'video') label = 'YOUTUBE';
         if (fileType === 'office') label = 'DOCUMENTO EXTERNO';
+        if (fileType === 'assignment') label = 'TAREFA';
 
         return (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${colors[fileType] || 'bg-gray-500'}`}>
@@ -198,6 +243,53 @@ const Viewer = () => {
                     </div>
                 )}
             </div>
+
+            {/* Seção de Entregas (Se for Tarefa) */}
+            {activity.file_type === 'assignment' && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
+                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Seu Trabalho</h2>
+                    {user?.role === 'admin' ? (
+                        <div className="space-y-4">
+                            <p className="text-sm text-gray-600 mb-2">Entregas dos alunos ({submissions.length}):</p>
+                            {submissions.length === 0 ? (
+                                <p className="text-sm text-gray-500 italic">Nenhum aluno entregou ainda.</p>
+                            ) : (
+                                <div className="border border-gray-200 rounded-md divide-y divide-gray-100">
+                                    {submissions.map(sub => (
+                                        <div key={sub.id} className="p-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium">{sub.profiles?.firstname} {sub.profiles?.lastname}</span>
+                                            <a href={sub.drive_link} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">Ver Entrega</a>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div>
+                            {mySubmission ? (
+                                <div className="bg-green-50 text-green-700 p-4 rounded-md border border-green-200">
+                                    <p className="font-medium">Você já enviou esta tarefa!</p>
+                                    <a href={mySubmission.drive_link} target="_blank" rel="noopener noreferrer" className="text-sm underline mt-1 inline-block">Ver arquivo enviado</a>
+                                </div>
+                            ) : (
+                                <form onSubmit={handleAddSubmission} className="flex gap-2">
+                                    <input
+                                        type="url"
+                                        placeholder="Cole o link do seu trabalho (Drive, etc)..."
+                                        required
+                                        value={subLink}
+                                        onChange={(e) => setSubLink(e.target.value)}
+                                        className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                                    />
+                                    <button disabled={submitting} type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                                        {submitting ? 'Enviando...' : 'Entregar'}
+                                    </button>
+                                </form>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Seção de Comentários focada na Aula */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
