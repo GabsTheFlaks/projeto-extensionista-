@@ -18,9 +18,10 @@ const Admin = () => {
     const [selectedClass, setSelectedClass] = useState('');
     const [matTitle, setMatTitle] = useState('');
     const [matDesc, setMatDesc] = useState('');
-    const [matFile, setMatFile] = useState(null);
-    const [matType, setMatType] = useState('pdf');
+    const [matLink, setMatLink] = useState(''); // Novo campo de link
+    const [matType, setMatType] = useState('pdf'); // Mantido por compatibilidade
     const [matLoading, setMatLoading] = useState(false);
+    const [linkError, setLinkError] = useState(''); // Erro de validação de link
 
     // Mensagens de Sucesso
     const [successMessage, setSuccessMessage] = useState('');
@@ -322,31 +323,41 @@ const handlePostMaterial = async (e) => {
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Arquivo</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Postagem</label>
                                     <select
                                         value={matType}
-                                        onChange={(e) => setMatType(e.target.value)}
+                                        onChange={(e) => {
+                                            setMatType(e.target.value);
+                                            if (e.target.value === 'announcement') setMatLink('');
+                                        }}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 bg-white"
                                     >
-                                        <option value="pdf">PDF</option>
-                                        <option value="video">Vídeo</option>
-                                        <option value="doc">Documento de Texto</option>
-                                        <option value="xls">Planilha</option>
-                                        <option value="pptx">Apresentação</option>
+                                        <option value="pdf">Material de Aula (Com Link)</option>
+                                        <option value="announcement">Aviso Geral (Sem Link)</option>
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Arquivo (Opcional)</label>
-                                    <input
-                                        type="file"
-                                        onChange={(e) => setMatFile(e.target.files[0])}
-                                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                                    />
-                                    <p className="mt-1 text-xs text-gray-500">
-                                        Será enviado ao Google Drive via Supabase Edge Functions.
-                                    </p>
-                                </div>
+                                {matType !== 'announcement' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Link do Material</label>
+                                        <input
+                                            type="url"
+                                            value={matLink}
+                                            onChange={(e) => setMatLink(e.target.value)}
+                                            className={`w-full px-4 py-2 border ${linkError ? 'border-red-500' : 'border-gray-300'} rounded-md focus:ring-blue-500 focus:border-blue-500`}
+                                            placeholder="https://..."
+                                        />
+                                        {linkError ? (
+                                            <p className="mt-1 text-xs text-red-600 font-medium">
+                                                {linkError}
+                                            </p>
+                                        ) : (
+                                            <p className="mt-1 text-xs text-gray-500">
+                                                Cole um link do Google Drive, YouTube, Microsoft Office 365 ou Canva.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="pt-4">

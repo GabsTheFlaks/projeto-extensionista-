@@ -31,13 +31,13 @@ const ClassroomLayout = () => {
 
             {/* Sidebar */}
             <aside
-                className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
-                    isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-gray-200 transform transition-all duration-300 ease-in-out md:relative ${
+                    isSidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20'
                 }`}
             >
                 <div className="h-full flex flex-col">
-                    <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-                        <span className="text-xl font-semibold text-gray-800">Sala de Aula</span>
+                    <div className={`flex items-center h-16 border-b border-gray-200 ${isSidebarOpen ? 'px-4 justify-between' : 'justify-center'}`}>
+                        {isSidebarOpen && <span className="text-xl font-semibold text-gray-800">Sala de Aula</span>}
                         <button
                             className="md:hidden text-gray-500 hover:text-gray-700 focus:outline-none"
                             onClick={() => setIsSidebarOpen(false)}
@@ -46,38 +46,44 @@ const ClassroomLayout = () => {
                         </button>
                     </div>
 
-                    <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+                    <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${isSidebarOpen ? 'px-4' : 'px-2'}`}>
                         {navLinks.map((link) => (
                             <Link
                                 key={link.path}
                                 to={link.path}
-                                className={`flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                                title={!isSidebarOpen ? link.label : ''}
+                                className={`flex items-center rounded-md text-sm font-medium transition-colors ${
+                                    isSidebarOpen ? 'px-3 py-2.5' : 'justify-center py-3'
+                                } ${
                                     location.pathname === link.path
                                         ? 'bg-blue-50 text-blue-700'
                                         : 'text-gray-700 hover:bg-gray-100'
                                 }`}
-                                onClick={() => setIsSidebarOpen(false)}
+                                onClick={() => { if(window.innerWidth < 768) setIsSidebarOpen(false); }}
                             >
-                                <span className="mr-3">{link.icon}</span>
-                                {link.label}
+                                <span className={isSidebarOpen ? "mr-3" : ""}>{link.icon}</span>
+                                {isSidebarOpen && link.label}
                             </Link>
                         ))}
 
                         {/* Divisor */}
-                        <div className="my-4 border-t border-gray-200"></div>
+                        <div className={`my-4 border-t border-gray-200 ${!isSidebarOpen && 'mx-2'}`}></div>
 
                         {user?.role === 'admin' && (
                             <Link
                                 to="/admin"
-                                className={`flex items-center px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                                title={!isSidebarOpen ? 'Painel Prof.' : ''}
+                                className={`flex items-center rounded-md text-sm font-medium transition-colors ${
+                                    isSidebarOpen ? 'px-3 py-2.5' : 'justify-center py-3'
+                                } ${
                                     location.pathname === '/admin'
                                         ? 'bg-green-50 text-green-700'
                                         : 'text-gray-700 hover:bg-gray-100'
                                 }`}
-                                onClick={() => setIsSidebarOpen(false)}
+                                onClick={() => { if(window.innerWidth < 768) setIsSidebarOpen(false); }}
                             >
-                                <PlusCircle className="w-5 h-5 mr-3" />
-                                Criar Turma
+                                <PlusCircle className={`w-5 h-5 ${isSidebarOpen ? 'mr-3' : ''}`} />
+                                {isSidebarOpen && 'Painel Prof.'}
                             </Link>
                         )}
                     </nav>
@@ -135,7 +141,7 @@ const ClassroomLayout = () => {
                         <div className="hidden md:flex items-center gap-3">
                             <div className="text-right">
                                 <p className="text-sm font-medium text-gray-700 leading-tight">
-                                    {user?.firstname}
+                                    {user?.firstname || user?.email?.split('@')[0]}
                                 </p>
                                 <p className="text-xs text-gray-500 leading-tight">
                                     {user?.role === 'admin' ? 'Professor' : 'Aluno'}
@@ -151,9 +157,12 @@ const ClassroomLayout = () => {
                                     <div className="px-4 py-2 border-b border-gray-100">
                                         <p className="text-sm text-gray-700 truncate">{user?.email}</p>
                                     </div>
+                                    <div className="px-4 py-2 border-b border-gray-100 bg-gray-50 text-xs text-gray-500 text-center uppercase tracking-wider font-semibold rounded-t-md">
+                                        Role: {user?.role === 'admin' ? 'Admin' : 'Aluno'}
+                                    </div>
                                     <button
                                         onClick={handleLogout}
-                                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50 flex items-center"
+                                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 flex items-center rounded-b-md transition-colors"
                                     >
                                         <LogOut className="w-4 h-4 mr-2" />
                                         Sair

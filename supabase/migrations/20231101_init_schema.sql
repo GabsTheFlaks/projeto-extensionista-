@@ -16,9 +16,18 @@ CREATE POLICY "Public profiles are viewable by everyone."
   ON public.profiles FOR SELECT
   USING (true);
 
+-- Política de UPDATE removida/restrita para evitar que usuários alterem suas próprias roles.
+-- Apenas admins do banco podem fazer isso via painel SQL/Backend.
 CREATE POLICY "Users can update own profile."
   ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+  USING (auth.uid() = id)
+  WITH CHECK (
+    -- Essa subquery estrita impede que o usuário edite a coluna role maliciosamente no payload.
+    -- Para o nosso escopo, a política padrão do Supabase bloqueia atualizações na própria role se bem configurada
+    -- Mas como não temos tela de edição de perfil, vamos simplesmente remover a permissão de UPDATE
+    -- de usuários normais ou checar se a role se mantém igual.
+    role = (SELECT role FROM public.profiles WHERE id = auth.uid())
+  );
 
 
 -- 2. Create Trigger to automatically create a profile when a new user signs up
@@ -31,7 +40,7 @@ BEGIN
     new.email,
     new.raw_user_meta_data->>'firstname',
     new.raw_user_meta_data->>'lastname',
-    COALESCE(new.raw_user_meta_data->>'role', 'student')
+    'student' -- Força 'student' independentemente do metadata para evitar manipulação client-side
   );
   RETURN new;
 END;

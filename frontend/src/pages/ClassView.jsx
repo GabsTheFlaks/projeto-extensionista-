@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
-import { ArrowLeft, FileText, Video, FileSpreadsheet, Presentation, File, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Video, BarChart, File, AlertCircle, MessageSquare } from 'lucide-react';
 import ActivityComments from '../components/ActivityComments';
 
 const ClassView = () => {
@@ -73,10 +73,10 @@ const ClassView = () => {
 
     const getFileIcon = (fileType) => {
         switch(fileType) {
-            case 'pdf': return <FileText className="w-5 h-5 text-red-500" />;
-            case 'video': return <Video className="w-5 h-5 text-blue-500" />;
-            case 'xls': return <FileSpreadsheet className="w-5 h-5 text-green-500" />;
-            case 'pptx': return <Presentation className="w-5 h-5 text-orange-500" />;
+            case 'drive': return <FileText className="w-5 h-5 text-blue-600" />;
+            case 'video': return <Video className="w-5 h-5 text-red-600" />;
+            case 'office': return <BarChart className="w-5 h-5 text-green-600" />;
+            case 'announcement': return <MessageSquare className="w-5 h-5 text-purple-600" />;
             default: return <File className="w-5 h-5 text-gray-500" />;
         }
     };
@@ -155,7 +155,7 @@ const ClassView = () => {
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h3 className="text-lg font-medium text-gray-900">
-                                                {activity.profiles?.firstname} postou um novo material: {activity.title}
+                                                {activity.profiles?.firstname} {activity.file_type === 'announcement' ? 'publicou um aviso' : 'postou um novo material'}: {activity.title}
                                             </h3>
                                             <p className="text-sm text-gray-500 mt-1">
                                                 {new Date(activity.created_at).toLocaleDateString('pt-BR', {
@@ -171,10 +171,16 @@ const ClassView = () => {
                                         </p>
                                     )}
 
-                                    {/* Link do Drive (Redirecionamento para a página Viewer) */}
+                                    {/* Link do Material */}
                                     {activity.drive_link && (
                                         <div
-                                            onClick={() => navigate(`/activity/${activity.id}`)}
+                                            onClick={() => {
+                                                if (activity.file_type === 'office') {
+                                                    window.open(activity.drive_link, "_blank", "noopener,noreferrer");
+                                                } else {
+                                                    navigate(`/activity/${activity.id}`);
+                                                }
+                                            }}
                                             className="mt-6 border border-gray-200 rounded-md overflow-hidden max-w-sm flex cursor-pointer hover:border-blue-300 hover:shadow-sm transition-all group"
                                         >
                                             <div className="bg-gray-50 border-r border-gray-200 p-4 flex items-center justify-center w-20 group-hover:bg-blue-50 transition-colors">
@@ -185,7 +191,7 @@ const ClassView = () => {
                                                     {activity.title}
                                                 </p>
                                                 <p className="text-xs text-gray-500 uppercase mt-1">
-                                                    {activity.file_type || 'ARQUIVO'}
+                                                    {activity.file_type === 'office' ? 'ABRIR EXTERNO' : 'VISUALIZAR'}
                                                 </p>
                                             </div>
                                         </div>

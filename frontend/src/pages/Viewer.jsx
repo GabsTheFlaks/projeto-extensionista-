@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/useAuth';
-import { ArrowLeft, AlertCircle, FileText, Video, FileSpreadsheet, Presentation, File } from 'lucide-react';
+import { ArrowLeft, AlertCircle, FileText, Video, BarChart, File } from 'lucide-react';
 import ActivityComments from '../components/ActivityComments';
 
 const Viewer = () => {
@@ -47,13 +47,21 @@ const Viewer = () => {
                     }
                 }
 
-                // Processar link para tentar versão 'preview' embedável se for link do Drive padrão
-                // A maioria dos links gerados pela API v3 já vem prontos (webViewLink) mas podemos garantir:
                 let embedLink = activityData.drive_link;
-                if (embedLink && embedLink.includes('view?usp=drivesdk')) {
-                    embedLink = embedLink.replace('view?usp=drivesdk', 'preview');
-                } else if (embedLink && embedLink.includes('/view')) {
-                    embedLink = embedLink.replace('/view', '/preview');
+
+                if (embedLink) {
+                    if (activityData.file_type === 'drive') {
+                        if (embedLink.includes('/view')) {
+                            embedLink = embedLink.replace('/view', '/preview');
+                        }
+                    } else if (activityData.file_type === 'video') {
+                        // Converter links do youtube para formato embed
+                        const ytRegex = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?/\s]{11})/i;
+                        const match = embedLink.match(ytRegex);
+                        if (match && match[1]) {
+                            embedLink = `https://www.youtube.com/embed/${match[1]}`;
+                        }
+                    }
                 }
 
                 setActivity({ ...activityData, embedLink });
@@ -73,21 +81,25 @@ const Viewer = () => {
 
     const getFileBadge = (fileType) => {
         const icons = {
-            pdf: <FileText className="w-4 h-4 mr-1 text-red-100" />,
-            video: <Video className="w-4 h-4 mr-1 text-blue-100" />,
-            xls: <FileSpreadsheet className="w-4 h-4 mr-1 text-green-100" />,
-            pptx: <Presentation className="w-4 h-4 mr-1 text-orange-100" />
+            drive: <FileText className="w-4 h-4 mr-1 text-blue-100" />,
+            video: <Video className="w-4 h-4 mr-1 text-red-100" />,
+            office: <BarChart className="w-4 h-4 mr-1 text-green-100" />
         };
         const colors = {
-            pdf: 'bg-red-500',
-            video: 'bg-blue-500',
-            xls: 'bg-green-500',
-            pptx: 'bg-orange-500'
+            drive: 'bg-blue-600',
+            video: 'bg-red-600',
+            office: 'bg-green-600'
         };
+
+        let label = 'ARQUIVO';
+        if (fileType === 'drive') label = 'GOOGLE DRIVE';
+        if (fileType === 'video') label = 'YOUTUBE';
+        if (fileType === 'office') label = 'DOCUMENTO EXTERNO';
+
         return (
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white ${colors[fileType] || 'bg-gray-500'}`}>
                 {icons[fileType] || <File className="w-4 h-4 mr-1 text-gray-100" />}
-                {fileType ? fileType.toUpperCase() : 'ARQUIVO'}
+                {label}
             </span>
         );
     };
@@ -154,7 +166,7 @@ const Viewer = () => {
                             rel="noopener noreferrer"
                             className="inline-flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors shrink-0"
                         >
-                            Abrir no Google Drive
+                            Abrir Externamente
                         </a>
                     )}
                 </div>

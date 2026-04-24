@@ -38,13 +38,18 @@ const CourseCard = ({ course, isEnrolled, onEnroll }) => {
                     )}
 
                     {/* Títulos sobrepostos */}
-                    <div className="absolute top-0 left-0 p-4 w-full">
+                    <div className="absolute top-0 left-0 p-4 w-full pr-20">
                         <h2 className="text-white text-xl font-medium truncate drop-shadow-md group-hover:underline">
                             {course.title}
                         </h2>
                         {course.category && (
                             <p className="text-white text-sm opacity-90 truncate mt-1">
                                 {course.category}
+                            </p>
+                        )}
+                        {course.profiles && (
+                            <p className="text-white text-xs opacity-80 truncate mt-0.5 font-medium">
+                                Prof. {course.profiles.firstname} {course.profiles.lastname}
                             </p>
                         )}
                     </div>
@@ -59,9 +64,13 @@ const CourseCard = ({ course, isEnrolled, onEnroll }) => {
             </Link>
 
             {/* Avatar Flutuante do Professor */}
-            <div className="absolute top-20 right-4 w-16 h-16 bg-white rounded-full p-1 shadow-sm border border-gray-100 z-10">
-                <div className="w-full h-full bg-gray-200 rounded-full flex items-center justify-center text-gray-500 overflow-hidden">
-                    <User className="w-8 h-8" />
+            <div className="absolute top-20 right-4 w-16 h-16 bg-white rounded-full p-1 shadow-md border border-gray-100 z-10">
+                <div className="w-full h-full bg-blue-100 rounded-full flex items-center justify-center text-blue-600 overflow-hidden" title={course.profiles ? `${course.profiles.firstname} ${course.profiles.lastname}` : 'Professor'}>
+                    {course.profiles && course.profiles.firstname ? (
+                        <span className="text-xl font-bold uppercase">{course.profiles.firstname.charAt(0)}</span>
+                    ) : (
+                        <User className="w-8 h-8" />
+                    )}
                 </div>
             </div>
 
