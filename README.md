@@ -48,7 +48,9 @@ As tabelas principais que criaremos são:
 - `class_activities`: Mural de postagens de aulas.
 - `activity_comments`: Comentários atrelados às aulas.
 
-**Atenção:** Certifique-se de executar os *Triggers* fornecidos nos scripts SQL para que as linhas em `profiles` sejam criadas automaticamente assim que um novo usuário realizar o Sign-Up. As políticas RLS já estão definidas no script.
+**Atenção:** 
+Certifique-se de executar os Triggers fornecidos nos scripts SQL para que as linhas em `profiles` sejam criadas automaticamente assim que um novo usuário realizar o Sign-Up.
+As políticas RLS já estão definidas no script.
 ---
 
 ## 💡 Dicas de Desenvolvimento
