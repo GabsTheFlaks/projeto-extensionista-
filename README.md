@@ -1,9 +1,9 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/github/explore/80688e429a7d4ef2fca1e82350fe8e3517d3494d/topics/react/react.png" width="80" alt="React" />
-  <img src="https://supabase.com/brand-assets/supabase-logo-icon.png" width="80" alt="Supabase" />
+ <img src="https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
 </div>
 
-<h1 align="center">EduPlatform - Study Platform (Google Classroom Clone)</h1>
+<h1 align="center">EduPlatform - Study Platform </h1>
 
 <div align="center">
   <a href="#-english">🇬🇧 English</a> | <a href="#-português">🇧🇷 Português</a>
@@ -22,12 +22,6 @@
 <h2 id="-english">🇬🇧 English</h2>
 
 Welcome to **EduPlatform**, an educational study platform inspired by Google Classroom! This project aims to provide a clean, secure, and professional interface for managing classes, student enrollments, activities, and assignments.
-
-### 📸 Screenshots
-*(Add your screenshots here)*
-| Dashboard | Class Activities | Assignment View |
-| :---: | :---: | :---: |
-| ![Dashboard Placeholder](https://via.placeholder.com/400x250.png?text=Dashboard) | ![Activities Placeholder](https://via.placeholder.com/400x250.png?text=Activities) | ![Assignment Placeholder](https://via.placeholder.com/400x250.png?text=Assignment) |
 
 ### 🏗 Architecture & Tech Stack
 This project operates on a modern, serverless architecture using Backend-as-a-Service (BaaS) principles.
@@ -78,12 +72,6 @@ File storage for course materials uses a smart external link system. Instead of 
 <h2 id="-português">🇧🇷 Português</h2>
 
 Bem-vindo à **EduPlatform**, uma plataforma de estudos educacional inspirada no Google Classroom! Este projeto tem como objetivo fornecer uma interface limpa, segura e profissional para o gerenciamento de turmas, matrículas, atividades e tarefas.
-
-### 📸 Telas
-*(Adicione seus prints aqui)*
-| Dashboard | Atividades da Turma | Visualização de Tarefa |
-| :---: | :---: | :---: |
-| ![Dashboard](https://via.placeholder.com/400x250.png?text=Dashboard) | ![Atividades](https://via.placeholder.com/400x250.png?text=Atividades) | ![Tarefa](https://via.placeholder.com/400x250.png?text=Tarefa) |
 
 ### 🏗 Arquitetura e Tecnologias
 Este projeto opera em uma arquitetura serverless moderna, usando princípios de Backend-as-a-Service (BaaS).
